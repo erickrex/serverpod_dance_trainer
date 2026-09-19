@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -10,10 +11,22 @@ import 'package:serverpod_auth_idp_flutter/serverpod_auth_idp_flutter.dart';
 import 'package:sqflite/sqflite.dart';
 
 class TrainingRepository {
-  TrainingRepository(this.client, this.apiUrl);
+  TrainingRepository(
+    this.client,
+    this.apiUrl, {
+    this.storageDirectory,
+    this.databaseFactoryOverride,
+  });
   final Client client;
   final String apiUrl;
-  Database? _db;
+  final Directory? storageDirectory;
+  final DatabaseFactory? databaseFactoryOverride;
+  Future<Database>? _db;
+  final _syncs = <String, Future<TrainingAttempt>>{};
+  final _downloads = <String, Future<File>>{};
+  bool _deleting = false;
+  Future<Directory> directory() async =>
+      storageDirectory ?? await getApplicationSupportDirectory();
   String get user => client.auth.authInfo?.authUserId.toString() ?? '';
   Uri asset(String path) {
     const configured = String.fromEnvironment('ASSET_URL');
@@ -23,21 +36,52 @@ class TrainingRepository {
     return base.resolve(path);
   }
 
-  Future<Database> database() async {
-    if (_db != null) return _db!;
-    final root = await getApplicationSupportDirectory();
-    return _db = await openDatabase(
+  Future<Database> database() => _db ??= _openDatabase();
+  Future<Database> _openDatabase() async {
+    final root = await directory();
+    await root.create(recursive: true);
+    return (databaseFactoryOverride ?? databaseFactory).openDatabase(
       '${root.path}/attempts.db',
-      version: 1,
-      onCreate: (db, version) async {
-        await db.execute(
-          'CREATE TABLE runs (id INTEGER PRIMARY KEY, user TEXT NOT NULL, attempt TEXT NOT NULL, endMs INTEGER, interrupted INTEGER NOT NULL DEFAULT 0, assignment INTEGER, result TEXT)',
-        );
-        await db.execute(
-          'CREATE TABLE observations (run INTEGER NOT NULL, sequence INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(run,sequence))',
-        );
-      },
+      options: OpenDatabaseOptions(
+        version: 3,
+        onCreate: (db, version) async {
+          await db.execute(
+            'CREATE TABLE runs (id INTEGER PRIMARY KEY, user TEXT NOT NULL, attempt TEXT NOT NULL, endMs INTEGER, interrupted INTEGER NOT NULL DEFAULT 0, assignment INTEGER, result TEXT)',
+          );
+          await db.execute(
+            'CREATE TABLE observations (run INTEGER NOT NULL, sequence INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(run,sequence))',
+          );
+          await _upgrade(db);
+          await db.execute('ALTER TABLE runs ADD COLUMN entry TEXT');
+        },
+        onUpgrade: (db, old, next) async {
+          if (old < 2) await _upgrade(db);
+          if (old < 3) {
+            await db.execute('ALTER TABLE runs ADD COLUMN entry TEXT');
+          }
+        },
+      ),
     );
+  }
+
+  Future<void> _upgrade(Database db) async {
+    await db.execute(
+      'ALTER TABLE runs ADD COLUMN acknowledged INTEGER NOT NULL DEFAULT 0',
+    );
+    await db.execute(
+      'ALTER TABLE runs ADD COLUMN retries INTEGER NOT NULL DEFAULT 0',
+    );
+    await db.execute(
+      'ALTER TABLE runs ADD COLUMN retryAt INTEGER NOT NULL DEFAULT 0',
+    );
+    await db.execute('ALTER TABLE runs ADD COLUMN error TEXT');
+    await db.execute('CREATE INDEX runs_pending ON runs(user, result, endMs)');
+  }
+
+  void _checkOwner(String owner) {
+    if (_deleting || owner.isEmpty || user != owner) {
+      throw StateError('Sign back in to the original account to sync.');
+    }
   }
 
   Future<File> download(
@@ -45,7 +89,27 @@ class TrainingRepository {
     String expected, {
     void Function(double)? progress,
   }) async {
-    final root = await getApplicationSupportDirectory();
+    if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(expected)) {
+      throw StateError('Invalid asset checksum.');
+    }
+    final existing = _downloads[expected];
+    if (existing != null) return existing;
+    final task = _download(path, expected, progress: progress);
+    _downloads[expected] = task;
+    try {
+      return await task;
+    } finally {
+      _downloads.remove(expected);
+    }
+  }
+
+  Future<File> _download(
+    String path,
+    String expected, {
+    void Function(double)? progress,
+  }) async {
+    final root = await directory();
+    await root.create(recursive: true);
     final file = File(
       '${root.path}/$expected${path.endsWith('.mp4') ? '.mp4' : '.pte'}',
     );
@@ -73,7 +137,7 @@ class TrainingRepository {
         progress?.call(
           response.contentLength == null
               ? 0
-              : received / response.contentLength!,
+              : (received / response.contentLength!).clamp(0.0, 1.0),
         );
       }
       await sink.close();
@@ -94,39 +158,105 @@ class TrainingRepository {
     '/content/models/yolov8n-pose_xnnpack.pte',
     poseModelHash,
   )).readAsBytes();
-  Future<void> saveRun(TrainingAttempt attempt, {int? assignmentId}) async {
-    if (user.isEmpty) throw StateError('Sign in before dancing.');
+  Future<void> saveRun(
+    TrainingAttempt attempt, {
+    int? assignmentId,
+    TrainingCatalogEntry? entry,
+  }) async {
+    final owner = user;
+    _checkOwner(owner);
+    if (attempt.userId != owner) {
+      throw StateError('This run belongs to another account.');
+    }
     final db = await database();
+    _checkOwner(owner);
     await db.insert('runs', {
       'id': attempt.id,
-      'user': user,
+      'user': owner,
       'attempt': jsonEncode(attempt.toJson()),
       'assignment': assignmentId,
+      'entry': entry == null ? null : jsonEncode(entry.toJson()),
     }, conflictAlgorithm: ConflictAlgorithm.ignore);
   }
 
   Future<void> append(int run, TrainingObservation observation) async {
+    final owner = user;
     final db = await database();
-    await db.insert('observations', {
-      'run': run,
-      'sequence': observation.sequence,
-      'payload': jsonEncode(observation.toJson()),
+    await db.transaction((tx) async {
+      _checkOwner(owner);
+      final rows = await tx.query(
+        'runs',
+        where: 'id=? AND user=? AND endMs IS NULL',
+        whereArgs: [run, owner],
+      );
+      if (rows.isEmpty) throw StateError('This run is no longer recording.');
+      await tx.insert('observations', {
+        'run': run,
+        'sequence': observation.sequence,
+        'payload': jsonEncode(observation.toJson()),
+      });
     });
   }
 
   Future<void> markComplete(int run, int endMs, bool interrupted) async {
+    final owner = user;
     final db = await database();
-    await db.update(
+    _checkOwner(owner);
+    final changed = await db.update(
       'runs',
       {'endMs': endMs, 'interrupted': interrupted ? 1 : 0},
-      where: 'id=? AND user=?',
-      whereArgs: [run, user],
+      where: 'id=? AND user=? AND endMs IS NULL',
+      whereArgs: [run, owner],
     );
+    if (changed != 1) {
+      throw StateError(
+        'This run is already complete or belongs to another account.',
+      );
+    }
   }
 
   Future<TrainingAttempt> sync(int run) async {
-    final db = await database();
     final owner = user;
+    _checkOwner(owner);
+    final key = '$owner:$run';
+    final active = _syncs[key];
+    if (active != null) return active;
+    final task = _sync(run, owner);
+    _syncs[key] = task;
+    try {
+      return await task;
+    } catch (error) {
+      final db = await database();
+      final rows = await db.query(
+        'runs',
+        where: 'id=? AND user=?',
+        whereArgs: [run, owner],
+      );
+      if (rows.isNotEmpty) {
+        final retries = ((rows.single['retries'] as int) + 1).clamp(1, 7);
+        await db.update(
+          'runs',
+          {
+            'retries': retries,
+            'retryAt':
+                DateTime.now().millisecondsSinceEpoch +
+                (5 * (1 << (retries - 1))).clamp(5, 300) * 1000,
+            'error': error is TrainingError
+                ? error.message
+                : 'Upload failed. Sign in and check your connection, then retry.',
+          },
+          where: 'id=? AND user=?',
+          whereArgs: [run, owner],
+        );
+      }
+      rethrow;
+    } finally {
+      _syncs.remove(key);
+    }
+  }
+
+  Future<TrainingAttempt> _sync(int run, String owner) async {
+    final db = await database();
     final rows = await db.query(
       'runs',
       where: 'id=? AND user=?',
@@ -144,56 +274,249 @@ class TrainingRepository {
       whereArgs: [run],
       orderBy: 'sequence',
     );
-    var chunk = 0;
-    for (var start = 0; start < payload.length; start += 50) {
-      if (user != owner) {
-        throw StateError('Sign back in to the original account to sync.');
-      }
+    _checkOwner(owner);
+    var result = await client.training.resumeUpload(run, attempt.ticket);
+    _checkOwner(owner);
+    final chunks = (payload.length / 50).ceil();
+    if (result.status != 'complete' && result.nextChunk > chunks) {
+      throw StateError(
+        'Local evidence is incomplete. Keep this run and contact support.',
+      );
+    }
+    for (
+      var chunk = result.nextChunk;
+      result.status != 'complete' && chunk < chunks;
+      chunk++
+    ) {
+      _checkOwner(owner);
+      final start = chunk * 50;
       final end = (start + 50).clamp(0, payload.length);
       await client.training.upload(
         run,
         attempt.ticket,
-        chunk++,
+        chunk,
         jsonEncode([
           for (final item in payload.sublist(start, end))
             jsonDecode(item['payload'] as String),
         ]),
       );
+      _checkOwner(owner);
+      await db.update(
+        'runs',
+        {'acknowledged': chunk + 1},
+        where: 'id=? AND user=?',
+        whereArgs: [run, owner],
+      );
     }
-    if (user != owner) throw StateError('Account changed while syncing.');
-    final result = await client.training.finalize(
-      run,
-      attempt.ticket,
-      chunk,
-      row['endMs'] as int,
-      row['interrupted'] == 1,
-    );
+    _checkOwner(owner);
+    if (result.status != 'complete') {
+      result = await client.training.finalize(
+        run,
+        attempt.ticket,
+        chunks,
+        row['endMs'] as int,
+        row['interrupted'] == 1,
+      );
+    }
+    _checkOwner(owner);
     if (row['assignment'] != null &&
         jsonObject(jsonDecode(result.resultJson!))['judgmentAvailable'] ==
             true) {
       await client.training.completeRepetition(row['assignment'] as int, run);
     }
-    await db.update(
-      'runs',
-      {'result': result.resultJson},
-      where: 'id=? AND user=?',
-      whereArgs: [run, owner],
-    );
+    _checkOwner(owner);
+    await db.transaction((tx) async {
+      await tx.update(
+        'runs',
+        {
+          'result': result.resultJson,
+          'error': null,
+          'retryAt': 0,
+          'retries': 0,
+        },
+        where: 'id=? AND user=?',
+        whereArgs: [run, owner],
+      );
+      await tx.delete('observations', where: 'run=?', whereArgs: [run]);
+    });
     return result;
   }
 
-  Future<int> syncPending() async {
+  Future<SyncReport> syncPending({bool force = false}) async {
+    final owner = user;
+    _checkOwner(owner);
     final db = await database();
     final rows = await db.query(
       'runs',
       where: 'user=? AND endMs IS NOT NULL AND result IS NULL',
-      whereArgs: [user],
+      whereArgs: [owner],
+      orderBy: 'id',
     );
-    var saved = 0;
+    var saved = 0, pending = 0;
     for (final row in rows) {
-      await sync(row['id'] as int);
-      saved++;
+      if (user != owner || _deleting) break;
+      if (!force &&
+          (row['retryAt'] as int) > DateTime.now().millisecondsSinceEpoch) {
+        pending++;
+        continue;
+      }
+      try {
+        await sync(row['id'] as int);
+        saved++;
+      } catch (_) {
+        pending++;
+      }
     }
-    return saved;
+    return SyncReport(saved, pending);
   }
+
+  Future<List<Map<String, Object?>>> localRuns() async {
+    final owner = user;
+    final db = await database();
+    _checkOwner(owner);
+    return db.query(
+      'runs',
+      where: 'user=? AND result IS NULL',
+      whereArgs: [owner],
+      orderBy: 'id DESC',
+    );
+  }
+
+  Future<Map<String, dynamic>> provisionalResult(int run) async {
+    final owner = user;
+    final db = await database();
+    final rows = await db.query(
+      'runs',
+      where: 'id=? AND user=? AND endMs IS NOT NULL',
+      whereArgs: [run, owner],
+    );
+    _checkOwner(owner);
+    if (rows.isEmpty || rows.single['entry'] == null) {
+      throw StateError(
+        'This older run needs a connection to restore its result.',
+      );
+    }
+    final row = rows.single;
+    if (row['result'] != null) {
+      return jsonObject(jsonDecode(row['result'] as String));
+    }
+    final attempt = TrainingAttempt.fromJson(
+      jsonObject(jsonDecode(row['attempt'] as String)),
+    );
+    final entry = TrainingCatalogEntry.fromJson(
+      jsonObject(jsonDecode(row['entry'] as String)),
+    );
+    final observations = await db.query(
+      'observations',
+      where: 'run=?',
+      whereArgs: [run],
+      orderBy: 'sequence',
+    );
+    _checkOwner(owner);
+    return scoreTraining(
+      TrainingBundle.fromJson(jsonDecode(entry.bundleJson)),
+      [
+        for (final observation in observations)
+          TrainingObservation.fromJson(
+            jsonDecode(observation['payload'] as String),
+          ),
+      ],
+      sectionId: attempt.sectionId,
+      interrupted: row['interrupted'] == 1,
+    );
+  }
+
+  Future<void> discardLocalRun(int run) async {
+    final owner = user;
+    if (_syncs.containsKey('$owner:$run')) {
+      throw StateError('Wait for this upload to finish.');
+    }
+    final db = await database();
+    await db.transaction((tx) async {
+      _checkOwner(owner);
+      final rows = await tx.query(
+        'runs',
+        where: 'id=? AND user=?',
+        whereArgs: [run, owner],
+      );
+      if (rows.isEmpty) return;
+      await tx.delete('observations', where: 'run=?', whereArgs: [run]);
+      await tx.delete(
+        'runs',
+        where: 'id=? AND user=?',
+        whereArgs: [run, owner],
+      );
+    });
+  }
+
+  Future<void> deleteAccount() async {
+    final owner = user;
+    _checkOwner(owner);
+    _deleting = true;
+    try {
+      await Future.wait(
+        _syncs.values.map((f) => f.then<void>((_) {}, onError: (Object _) {})),
+      );
+      if (user != owner) throw StateError('Account changed. Sign in again.');
+      final db = await database();
+      await db.transaction((tx) async {
+        if (user != owner) throw StateError('Account changed. Sign in again.');
+        await tx.rawDelete(
+          'DELETE FROM observations WHERE run IN (SELECT id FROM runs WHERE user=?)',
+          [owner],
+        );
+        await tx.delete('runs', where: 'user=?', whereArgs: [owner]);
+      });
+      // Clear the confirmed local deletion before revoking the account. A lost
+      // response must not leave evidence behind an identity that cannot sign in.
+      try {
+        if (user != owner) throw StateError('Account changed.');
+        await client.training.deleteAccount();
+      } catch (_) {
+        throw StateError(
+          'Local training data was removed. Account deletion was not confirmed. Sign in to the original account and retry deleting it.',
+        );
+      }
+    } finally {
+      _deleting = false;
+    }
+  }
+
+  Future<List<CachedAsset>> cachedAssets() async {
+    final root = await directory();
+    if (!await root.exists()) return [];
+    final files = await root
+        .list()
+        .where(
+          (f) =>
+              f is File &&
+              RegExp(r'/[a-f0-9]{64}\.(mp4|pte)(\.part)?$').hasMatch(f.path),
+        )
+        .cast<File>()
+        .toList();
+    return [for (final file in files) CachedAsset(file, await file.length())];
+  }
+
+  Future<void> removeAsset(CachedAsset asset) async {
+    final name = asset.file.uri.pathSegments.last;
+    if (_downloads.containsKey(name.split('.').first)) {
+      throw StateError('Wait for the download to finish.');
+    }
+    final root = await directory();
+    if (asset.file.parent.path != root.path) {
+      throw StateError('Invalid cached asset.');
+    }
+    if (await asset.file.exists()) await asset.file.delete();
+  }
+}
+
+class SyncReport {
+  const SyncReport(this.saved, this.pending);
+  final int saved, pending;
+}
+
+class CachedAsset {
+  const CachedAsset(this.file, this.bytes);
+  final File file;
+  final int bytes;
 }

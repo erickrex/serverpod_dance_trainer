@@ -4,6 +4,8 @@ An Android Flutter app with camera pose tracking, a shared Dart scorer, and Serv
 
 The implementation now includes real inference, authenticated training endpoints, local evidence storage and retry, server scoring, history, profiles, practice assignments, and an opt-in leaderboard. It is a **development build**. Both routines remain unreviewed and unranked. Physical-device camera timing and sustained performance have not been validated. The broader specification also includes work that remains unfinished; see [verification](docs/verification.md).
 
+Completed runs can recover after a restart, resume their uploads and show provisional results offline. History supports older pages and comparisons between compatible attempts. Profile settings include account deletion and download management. See the [development audit](docs/development_status.md) for the remaining specification work.
+
 ## Toolchain
 
 Use Flutter **3.38.9**, Dart **3.10.8**, Serverpod and Serverpod CLI **3.4.13**, JDK 17, and the Android SDK. Android training requires a front camera and API 24 or newer. The current build targets arm64. Native host inference tests require CMake, Ninja, a C++ compiler, and FFmpeg.
@@ -61,9 +63,11 @@ cd dance_trainer_flutter
 flutter run --dart-define=SERVER_URL=http://127.0.0.1:8080/ --dart-define=ASSET_URL=http://127.0.0.1:8082/
 ```
 
-Alternatively, use the development computer's reachable LAN address in both defines. Create an account through the sign-in screen and use the emailed code. The app downloads and verifies the instructor video and the trained pose model before starting. Hold your full body in view for setup, then start the countdown. Leaving the app stops the run. A completed run retains its observations locally if upload fails; return to the home screen and use sync to retry with the same account.
+Alternatively, use the development computer's reachable LAN address in both defines. Create an account through the sign-in screen and use the emailed code. The app downloads and verifies the instructor video and the trained pose model before starting. Hold your full body in view for setup, then start the countdown. Leaving the app stops the run. A completed run retains its observations locally if upload fails. Returning to the home screen resumes automatic retries with the original account; the sync button retries immediately. History shows pending and interrupted local runs. Interrupted runs must restart.
 
 Only Android has a camera bridge. Other platforms cannot start a training run. Development HTTP is enabled only in the Android debug manifest. Production builds need HTTPS endpoints and a release signing configuration.
+
+Release builds require the four signing environment variables described in [operations](docs/operations.md). Missing signing credentials fail the release build instead of producing a debug-signed release.
 
 ```bash
 flutter build apk --debug --target-platform android-arm64
@@ -78,6 +82,8 @@ dart run tools/content_pipeline/compile.dart
 ```
 
 The compiler reads the actual video dimensions and source sampling rates, excludes unreliable tracking intervals, and produces development pose checkpoints and sidecars. These are not human-reviewed choreography or beat annotations. The app uses each MP4's own audio to keep instructor playback on one timeline; the separate MP3 files remain archived.
+
+Previous bundles remain in `content/compiled/versions`. The server resolves queued attempts against their original version. Preserve these files in deployments; the compiler rejects changed bytes under an existing version.
 
 The scorer compares joint angles, limb directions, and body-scaled positions. A frame can match at most one checkpoint. Missing measurements reduce coverage; wholly mismatched movement earns no timing credit. Overall judgment is suppressed below the coverage gate. The server recomputes saved scores from observations, and never accepts a client total. Neither development routine can enter the leaderboard.
 
@@ -101,6 +107,8 @@ The Flutter suite loads the actual model and decodes a frame from the archived v
 
 A GitHub Actions workflow defines these checks. Its hosted run has not been exercised here. Local results and remaining limitations are in [docs/verification.md](docs/verification.md).
 
+The SQLite recovery tests use test-only transport and account doubles to inject failures. PostgreSQL tests separately verify real ownership, deletion, idempotency and concurrent transactions. CI also checks generated transport code, deterministic content, the server Docker build and an Android debug build.
+
 ## Server image
 
 Build from the repository root so the shared domain and runtime content are included:
@@ -110,6 +118,8 @@ docker build -f dance_trainer_server/Dockerfile -t dance-trainer-server .
 ```
 
 The image uses Dart 3.10.8 and includes the model, compiled bundles and source media. It excludes passwords and runs as an unprivileged user. Supply runtime configuration, SMTP environment variables and a reachable database when starting it. The build's isolated Dart workspace has been compiled locally; a Docker image build still requires a Docker daemon.
+
+Deployment, readiness checks, migration recovery, account deletion and pose-data retention are documented in [operations](docs/operations.md).
 
 ## Project map
 

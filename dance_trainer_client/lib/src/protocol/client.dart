@@ -285,6 +285,20 @@ class EndpointCatalog extends _i2.EndpointRef {
 }
 
 /// {@category Endpoint}
+class EndpointHealth extends _i2.EndpointRef {
+  EndpointHealth(_i2.EndpointCaller caller) : super(caller);
+
+  @override
+  String get name => 'health';
+
+  _i3.Future<String> ready() => caller.callServerEndpoint<String>(
+    'health',
+    'ready',
+    {},
+  );
+}
+
+/// {@category Endpoint}
 class EndpointTraining extends _i2.EndpointRef {
   EndpointTraining(_i2.EndpointCaller caller) : super(caller);
 
@@ -307,6 +321,24 @@ class EndpointTraining extends _i2.EndpointRef {
     {
       'name': name,
       'visible': visible,
+    },
+  );
+
+  _i3.Future<void> deleteAccount() => caller.callServerEndpoint<void>(
+    'training',
+    'deleteAccount',
+    {},
+  );
+
+  _i3.Future<_i8.TrainingAttempt> resumeUpload(
+    int attemptId,
+    String ticket,
+  ) => caller.callServerEndpoint<_i8.TrainingAttempt>(
+    'training',
+    'resumeUpload',
+    {
+      'attemptId': attemptId,
+      'ticket': ticket,
     },
   );
 
@@ -362,12 +394,17 @@ class EndpointTraining extends _i2.EndpointRef {
     },
   );
 
-  _i3.Future<List<_i8.TrainingAttempt>> history({required int offset}) =>
-      caller.callServerEndpoint<List<_i8.TrainingAttempt>>(
-        'training',
-        'history',
-        {'offset': offset},
-      );
+  _i3.Future<List<_i8.TrainingAttempt>> history({
+    required int offset,
+    int? beforeId,
+  }) => caller.callServerEndpoint<List<_i8.TrainingAttempt>>(
+    'training',
+    'history',
+    {
+      'offset': offset,
+      'beforeId': beforeId,
+    },
+  );
 
   _i3.Future<List<_i9.BoardEntry>> leaderboard(String routineId) =>
       caller.callServerEndpoint<List<_i9.BoardEntry>>(
@@ -440,6 +477,7 @@ class Client extends _i2.ServerpodClientShared {
     jwtRefresh = EndpointJwtRefresh(this);
     greeting = EndpointGreeting(this);
     catalog = EndpointCatalog(this);
+    health = EndpointHealth(this);
     training = EndpointTraining(this);
     modules = Modules(this);
   }
@@ -452,6 +490,8 @@ class Client extends _i2.ServerpodClientShared {
 
   late final EndpointCatalog catalog;
 
+  late final EndpointHealth health;
+
   late final EndpointTraining training;
 
   late final Modules modules;
@@ -462,6 +502,7 @@ class Client extends _i2.ServerpodClientShared {
     'jwtRefresh': jwtRefresh,
     'greeting': greeting,
     'catalog': catalog,
+    'health': health,
     'training': training,
   };
 

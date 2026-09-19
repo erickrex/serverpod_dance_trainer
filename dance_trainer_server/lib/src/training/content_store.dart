@@ -10,15 +10,37 @@ class ContentStore {
             ? '../content'
             : 'content'),
   );
-  static TrainingBundle load(String routineId) {
+  static TrainingBundle load(
+    String routineId, {
+    String? version,
+    Directory? contentDirectory,
+  }) {
     if (!RegExp(r'^[a-zA-Z0-9_-]{1,80}$').hasMatch(routineId)) {
       throw TrainingError(code: 'content', message: 'Unknown routine.');
     }
-    final file = File('${directory.path}/compiled/$routineId.json');
+    if (version != null && !RegExp(r'^[a-f0-9]{64}$').hasMatch(version)) {
+      throw TrainingError(code: 'version', message: 'Invalid content version.');
+    }
+    final root = contentDirectory ?? directory;
+    var file = File('${root.path}/compiled/$routineId.json');
+    if (version != null) {
+      final archived = File(
+        '${root.path}/compiled/versions/$routineId/$version.json',
+      );
+      if (archived.existsSync()) file = archived;
+    }
     if (!file.existsSync()) {
       throw TrainingError(code: 'content', message: 'Routine is unavailable.');
     }
-    return TrainingBundle.fromJson(jsonDecode(file.readAsStringSync()));
+    final bundle = TrainingBundle.fromJson(jsonDecode(file.readAsStringSync()));
+    if (bundle.id != routineId ||
+        (version != null && bundle.version != version)) {
+      throw TrainingError(
+        code: 'version',
+        message: 'The referenced routine version is unavailable.',
+      );
+    }
+    return bundle;
   }
 
   static List<TrainingCatalogEntry> catalog() {

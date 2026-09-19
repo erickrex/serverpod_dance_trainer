@@ -28,6 +28,9 @@ import 'package:dance_trainer_server/src/generated/training/board_entry.dart'
     as _i9;
 import 'package:dance_trainer_server/src/generated/training/practice_assignment.dart'
     as _i10;
+import 'package:dance_trainer_server/src/generated/future_calls_generated_models/evidence_retention_purge_model.dart'
+    as _i11;
+import 'package:dance_trainer_server/src/generated/future_calls.dart' as _i12;
 import 'package:dance_trainer_server/src/generated/protocol.dart';
 import 'package:dance_trainer_server/src/generated/endpoints.dart';
 export 'package:serverpod_test/serverpod_test_public_exports.dart';
@@ -142,6 +145,8 @@ void withServerpod(
 }
 
 class TestEndpoints {
+  late final futureCalls = _FutureCalls();
+
   late final _EmailIdpEndpoint emailIdp;
 
   late final _JwtRefreshEndpoint jwtRefresh;
@@ -149,6 +154,8 @@ class TestEndpoints {
   late final _GreetingEndpoint greeting;
 
   late final _CatalogEndpoint catalog;
+
+  late final _HealthEndpoint health;
 
   late final _TrainingEndpoint training;
 }
@@ -176,11 +183,19 @@ class _InternalTestEndpoints extends TestEndpoints
       endpoints,
       serializationManager,
     );
+    health = _HealthEndpoint(
+      endpoints,
+      serializationManager,
+    );
     training = _TrainingEndpoint(
       endpoints,
       serializationManager,
     );
   }
+}
+
+class _FutureCalls {
+  late final evidenceRetention = _EvidenceRetentionFutureCall();
 }
 
 class _EmailIdpEndpoint {
@@ -584,6 +599,45 @@ class _CatalogEndpoint {
   }
 }
 
+class _HealthEndpoint {
+  _HealthEndpoint(
+    this._endpointDispatch,
+    this._serializationManager,
+  );
+
+  final _i2.EndpointDispatch _endpointDispatch;
+
+  final _i2.SerializationManager _serializationManager;
+
+  _i3.Future<String> ready(_i1.TestSessionBuilder sessionBuilder) async {
+    return _i1.callAwaitableFunctionAndHandleExceptions(() async {
+      var _localUniqueSession =
+          (sessionBuilder as _i1.InternalTestSessionBuilder).internalBuild(
+            endpoint: 'health',
+            method: 'ready',
+          );
+      try {
+        var _localCallContext = await _endpointDispatch.getMethodCallContext(
+          createSessionCallback: (_) => _localUniqueSession,
+          endpointPath: 'health',
+          methodName: 'ready',
+          parameters: _i1.testObjectToJson({}),
+          serializationManager: _serializationManager,
+        );
+        var _localReturnValue =
+            await (_localCallContext.method.call(
+                  _localUniqueSession,
+                  _localCallContext.arguments,
+                )
+                as _i3.Future<String>);
+        return _localReturnValue;
+      } finally {
+        await _localUniqueSession.close();
+      }
+    });
+  }
+}
+
 class _TrainingEndpoint {
   _TrainingEndpoint(
     this._endpointDispatch,
@@ -652,6 +706,69 @@ class _TrainingEndpoint {
                   _localCallContext.arguments,
                 )
                 as _i3.Future<_i7.LearnerProfile>);
+        return _localReturnValue;
+      } finally {
+        await _localUniqueSession.close();
+      }
+    });
+  }
+
+  _i3.Future<void> deleteAccount(_i1.TestSessionBuilder sessionBuilder) async {
+    return _i1.callAwaitableFunctionAndHandleExceptions(() async {
+      var _localUniqueSession =
+          (sessionBuilder as _i1.InternalTestSessionBuilder).internalBuild(
+            endpoint: 'training',
+            method: 'deleteAccount',
+          );
+      try {
+        var _localCallContext = await _endpointDispatch.getMethodCallContext(
+          createSessionCallback: (_) => _localUniqueSession,
+          endpointPath: 'training',
+          methodName: 'deleteAccount',
+          parameters: _i1.testObjectToJson({}),
+          serializationManager: _serializationManager,
+        );
+        var _localReturnValue =
+            await (_localCallContext.method.call(
+                  _localUniqueSession,
+                  _localCallContext.arguments,
+                )
+                as _i3.Future<void>);
+        return _localReturnValue;
+      } finally {
+        await _localUniqueSession.close();
+      }
+    });
+  }
+
+  _i3.Future<_i8.TrainingAttempt> resumeUpload(
+    _i1.TestSessionBuilder sessionBuilder,
+    int attemptId,
+    String ticket,
+  ) async {
+    return _i1.callAwaitableFunctionAndHandleExceptions(() async {
+      var _localUniqueSession =
+          (sessionBuilder as _i1.InternalTestSessionBuilder).internalBuild(
+            endpoint: 'training',
+            method: 'resumeUpload',
+          );
+      try {
+        var _localCallContext = await _endpointDispatch.getMethodCallContext(
+          createSessionCallback: (_) => _localUniqueSession,
+          endpointPath: 'training',
+          methodName: 'resumeUpload',
+          parameters: _i1.testObjectToJson({
+            'attemptId': attemptId,
+            'ticket': ticket,
+          }),
+          serializationManager: _serializationManager,
+        );
+        var _localReturnValue =
+            await (_localCallContext.method.call(
+                  _localUniqueSession,
+                  _localCallContext.arguments,
+                )
+                as _i3.Future<_i8.TrainingAttempt>);
         return _localReturnValue;
       } finally {
         await _localUniqueSession.close();
@@ -783,6 +900,7 @@ class _TrainingEndpoint {
   _i3.Future<List<_i8.TrainingAttempt>> history(
     _i1.TestSessionBuilder sessionBuilder, {
     required int offset,
+    int? beforeId,
   }) async {
     return _i1.callAwaitableFunctionAndHandleExceptions(() async {
       var _localUniqueSession =
@@ -795,7 +913,10 @@ class _TrainingEndpoint {
           createSessionCallback: (_) => _localUniqueSession,
           endpointPath: 'training',
           methodName: 'history',
-          parameters: _i1.testObjectToJson({'offset': offset}),
+          parameters: _i1.testObjectToJson({
+            'offset': offset,
+            'beforeId': beforeId,
+          }),
           serializationManager: _serializationManager,
         );
         var _localReturnValue =
@@ -908,5 +1029,40 @@ class _TrainingEndpoint {
         await _localUniqueSession.close();
       }
     });
+  }
+}
+
+class _EvidenceRetentionFutureCall {
+  Future<void> purge(
+    _i1.TestSessionBuilder sessionBuilder, {
+    DateTime? now,
+  }) async {
+    var object = _i11.EvidenceRetentionPurgeModel(now: now);
+    var _localUniqueSession = (sessionBuilder as _i1.InternalTestSessionBuilder)
+        .internalBuild();
+    try {
+      await _i12.EvidenceRetentionPurgeFutureCall().invoke(
+        _localUniqueSession,
+        object,
+      );
+    } finally {
+      await _localUniqueSession.close();
+    }
+  }
+
+  Future<void> invoke(
+    _i1.TestSessionBuilder sessionBuilder,
+    _i2.SerializableModel? object,
+  ) async {
+    var _localUniqueSession = (sessionBuilder as _i1.InternalTestSessionBuilder)
+        .internalBuild();
+    try {
+      await _i12.EvidenceRetentionInvokeFutureCall().invoke(
+        _localUniqueSession,
+        object,
+      );
+    } finally {
+      await _localUniqueSession.close();
+    }
   }
 }

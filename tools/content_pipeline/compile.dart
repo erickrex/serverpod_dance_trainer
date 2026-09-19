@@ -138,6 +138,31 @@ Future<void> main(List<String> args) async {
       sections: sections,
     );
     final encoded = jsonEncode(bundle.toJson());
+    final current = File('content/compiled/$routine.json');
+    // Preserve previous bundles before changing the catalog pointer.
+    for (final text in [
+      if (await current.exists()) await current.readAsString(),
+      encoded,
+    ]) {
+      final data = jsonObject(jsonDecode(text));
+      final previousVersion = data['version'] as String;
+      if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(previousVersion)) {
+        throw StateError('Invalid bundle version for $routine');
+      }
+      final archive = File(
+        'content/compiled/versions/$routine/$previousVersion.json',
+      );
+      await archive.parent.create(recursive: true);
+      if (await archive.exists()) {
+        if (await archive.readAsString() != text) {
+          throw StateError(
+            'Immutable version $previousVersion already has different content',
+          );
+        }
+      } else {
+        await archive.writeAsString(text, flush: true);
+      }
+    }
     await File('content/compiled/$routine.json').writeAsString(encoded);
     await File('content/annotations/$routine.development.json').writeAsString(
       jsonEncode({

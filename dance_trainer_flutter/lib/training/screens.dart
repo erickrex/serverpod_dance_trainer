@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'pose_engine.dart';
 import 'repository.dart';
+import 'management_screens.dart';
 
 String readableError(Object error) => error is TrainingError
     ? error.message
@@ -35,20 +36,37 @@ class _TrainingHomeState extends State<TrainingHome> {
   late Future<List<TrainingCatalogEntry>> _catalog;
   int _tab = 0;
   String? _syncMessage;
+  Timer? _retryTimer;
+  bool _syncing = false;
   @override
   void initState() {
     super.initState();
     _catalog = widget.repository.client.catalog.list();
-    _sync();
+    _sync(force: false);
+    _retryTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => _sync(force: false),
+    );
   }
 
-  Future<void> _sync() async {
-    if (kIsWeb || !Platform.isAndroid) return;
+  @override
+  void dispose() {
+    _retryTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _sync({bool force = true}) async {
+    if (kIsWeb || !Platform.isAndroid || _syncing) return;
+    _syncing = true;
     try {
-      final count = await widget.repository.syncPending();
+      final report = await widget.repository.syncPending(force: force);
       if (mounted) {
         setState(
-          () => _syncMessage = count > 0 ? '$count pending runs saved.' : null,
+          () => _syncMessage = report.pending > 0
+              ? '${report.pending} runs await sync. Automatic retry is active.'
+              : report.saved > 0
+              ? '${report.saved} pending runs saved.'
+              : null,
         );
       }
     } catch (_) {
@@ -58,6 +76,8 @@ class _TrainingHomeState extends State<TrainingHome> {
               'Completed runs are on this device. Tap sync to retry.',
         );
       }
+    } finally {
+      _syncing = false;
     }
   }
 
@@ -109,7 +129,7 @@ class _TrainingHomeState extends State<TrainingHome> {
                 );
               },
             ),
-            1 => HistoryScreen(repository: widget.repository),
+            1 => ProgressScreen(repository: widget.repository),
             _ => ProfileScreen(
               repository: widget.repository,
               onSignOut: widget.onSignOut,
@@ -569,6 +589,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
       await widget.repository.saveRun(
         _attempt!,
         assignmentId: widget.assignment?.id,
+        entry: widget.entry,
       );
       for (var n = 3; n > 0; n--) {
         if (!mounted || token != _generation) return;
@@ -589,8 +610,6 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
     if (_phase != 'running') return;
     setState(() => _phase = 'saving');
     _generation++;
-    await _player.pause();
-    await _camera.invokeMethod<void>('stop');
     try {
       await _writes;
       if (_observations.isEmpty) {
@@ -599,6 +618,8 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
         );
       }
       await widget.repository.markComplete(_attempt!.id!, _endMs, _interrupted);
+      await _player.pause();
+      await _camera.invokeMethod<void>('stop');
       _provisional = scoreTraining(
         _bundle,
         _observations,
@@ -857,99 +878,6 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 }
 
-class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key, required this.repository});
-  final TrainingRepository repository;
-  @override
-  State<HistoryScreen> createState() => _HistoryScreenState();
-}
-
-class _HistoryScreenState extends State<HistoryScreen> {
-  late Future<List<TrainingAttempt>> _history = widget
-      .repository
-      .client
-      .training
-      .history(offset: 0);
-  @override
-  Widget build(BuildContext context) => FutureBuilder<List<TrainingAttempt>>(
-    future: _history,
-    builder: (context, snapshot) {
-      if (snapshot.hasError) {
-        return RetryPanel(
-          message: readableError(snapshot.error!),
-          retry: () => setState(
-            () =>
-                _history = widget.repository.client.training.history(offset: 0),
-          ),
-        );
-      }
-      if (!snapshot.hasData) {
-        return const Center(child: CircularProgressIndicator());
-      }
-      if (snapshot.data!.isEmpty) {
-        return const Center(
-          child: Text('Your completed routines and drills will appear here.'),
-        );
-      }
-      return RefreshIndicator(
-        onRefresh: () async {
-          setState(
-            () =>
-                _history = widget.repository.client.training.history(offset: 0),
-          );
-          await _history;
-        },
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Text(
-              'Your progress',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-            for (final attempt in snapshot.data!)
-              Card(
-                child: ListTile(
-                  title: Text(attempt.routineId),
-                  subtitle: Text(
-                    '${attempt.mode} · ${attempt.createdAt.toLocal().toString().split('.').first}\nTracking ${(finiteNumber(jsonObject(jsonDecode(attempt.resultJson!))['coverage']) * 100).round()}%',
-                  ),
-                  trailing: Text(
-                    jsonObject(
-                              jsonDecode(attempt.resultJson!),
-                            )['judgmentAvailable'] ==
-                            true
-                        ? '${jsonObject(jsonDecode(attempt.resultJson!))['totalScore']}'
-                        : 'Not enough tracking',
-                  ),
-                  onTap: () async {
-                    final catalog = await widget.repository.client.catalog
-                        .list();
-                    final entry = catalog
-                        .where((e) => e.version == attempt.contentVersion)
-                        .firstOrNull;
-                    if (!context.mounted || entry == null) return;
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute<void>(
-                        builder: (_) => ResultScreen(
-                          repository: widget.repository,
-                          entry: entry,
-                          attempt: attempt,
-                          result: jsonObject(jsonDecode(attempt.resultJson!)),
-                          pending: false,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-          ],
-        ),
-      );
-    },
-  );
-}
-
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
     super.key,
@@ -964,7 +892,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final _name = TextEditingController();
-  bool _visible = false, _loaded = false;
+  bool _visible = false, _loaded = false, _deleting = false;
   String? _message;
   @override
   void initState() {
@@ -983,6 +911,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
       });
     } catch (e) {
       if (mounted) setState(() => _message = readableError(e));
+    }
+  }
+
+  Future<void> _deleteAccount() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete your account?'),
+        content: const Text(
+          'This removes local queued runs immediately, then deletes your sign-in account, results, practice records and leaderboard entries. If the connection fails, you must retry account deletion. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep account'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete account'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => _deleting = true);
+    try {
+      await widget.repository.deleteAccount();
+      await widget.onSignOut();
+    } catch (e) {
+      if (mounted) setState(() => _message = readableError(e));
+    } finally {
+      if (mounted) setState(() => _deleting = false);
     }
   }
 
@@ -1010,7 +970,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       if (_message != null) Text(_message!),
       FilledButton(
-        onPressed: !_loaded
+        onPressed: !_loaded || _deleting
             ? null
             : () async {
                 try {
@@ -1025,7 +985,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
               },
         child: const Text('Save profile'),
       ),
-      TextButton(onPressed: widget.onSignOut, child: const Text('Sign out')),
+      if (!kIsWeb && Platform.isAndroid)
+        TextButton(
+          onPressed: _deleting
+              ? null
+              : () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        DownloadsScreen(repository: widget.repository),
+                  ),
+                ),
+          child: const Text('Manage downloads'),
+        ),
+      TextButton(
+        onPressed: _deleting ? null : widget.onSignOut,
+        child: const Text('Sign out'),
+      ),
+      TextButton(
+        onPressed: _deleting ? null : _deleteAccount,
+        child: Text(_deleting ? 'Deleting account…' : 'Delete account'),
+      ),
     ],
   );
 }

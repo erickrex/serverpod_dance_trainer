@@ -1,0 +1,11 @@
+class: TrainingQuota
+table: training_quota
+serverOnly: true
+fields:
+  userId: String
+  windowStart: DateTime
+  requests: int
+indexes:
+  quota_user_unique:
+    fields: userId
+    unique: true

@@ -16,22 +16,25 @@ import 'package:serverpod_auth_idp_server/serverpod_auth_idp_server.dart'
     as _i3;
 import 'package:serverpod_auth_core_server/serverpod_auth_core_server.dart'
     as _i4;
-import 'greetings/greeting.dart' as _i5;
-import 'training/board_entry.dart' as _i6;
-import 'training/learner_profile.dart' as _i7;
-import 'training/practice_assignment.dart' as _i8;
-import 'training/practice_repetition.dart' as _i9;
-import 'training/training_attempt.dart' as _i10;
-import 'training/training_best.dart' as _i11;
-import 'training/training_catalog_entry.dart' as _i12;
-import 'training/training_chunk.dart' as _i13;
-import 'training/training_error.dart' as _i14;
+import 'future_calls_generated_models/evidence_retention_purge_model.dart'
+    as _i5;
+import 'greetings/greeting.dart' as _i6;
+import 'training/board_entry.dart' as _i7;
+import 'training/learner_profile.dart' as _i8;
+import 'training/practice_assignment.dart' as _i9;
+import 'training/practice_repetition.dart' as _i10;
+import 'training/training_attempt.dart' as _i11;
+import 'training/training_best.dart' as _i12;
+import 'training/training_catalog_entry.dart' as _i13;
+import 'training/training_chunk.dart' as _i14;
+import 'training/training_error.dart' as _i15;
+import 'training/training_quota.dart' as _i16;
 import 'package:dance_trainer_server/src/generated/training/training_catalog_entry.dart'
-    as _i15;
-import 'package:dance_trainer_server/src/generated/training/training_attempt.dart'
-    as _i16;
-import 'package:dance_trainer_server/src/generated/training/board_entry.dart'
     as _i17;
+import 'package:dance_trainer_server/src/generated/training/training_attempt.dart'
+    as _i18;
+import 'package:dance_trainer_server/src/generated/training/board_entry.dart'
+    as _i19;
 export 'greetings/greeting.dart';
 export 'training/board_entry.dart';
 export 'training/learner_profile.dart';
@@ -42,6 +45,7 @@ export 'training/training_best.dart';
 export 'training/training_catalog_entry.dart';
 export 'training/training_chunk.dart';
 export 'training/training_error.dart';
+export 'training/training_quota.dart';
 
 class Protocol extends _i1.SerializationManagerServer {
   Protocol._();
@@ -564,6 +568,69 @@ class Protocol extends _i1.SerializationManagerServer {
       ],
       managed: true,
     ),
+    _i2.TableDefinition(
+      name: 'training_quota',
+      dartName: 'TrainingQuota',
+      schema: 'public',
+      module: 'dance_trainer',
+      columns: [
+        _i2.ColumnDefinition(
+          name: 'id',
+          columnType: _i2.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int?',
+          columnDefault: 'nextval(\'training_quota_id_seq\'::regclass)',
+        ),
+        _i2.ColumnDefinition(
+          name: 'userId',
+          columnType: _i2.ColumnType.text,
+          isNullable: false,
+          dartType: 'String',
+        ),
+        _i2.ColumnDefinition(
+          name: 'windowStart',
+          columnType: _i2.ColumnType.timestampWithoutTimeZone,
+          isNullable: false,
+          dartType: 'DateTime',
+        ),
+        _i2.ColumnDefinition(
+          name: 'requests',
+          columnType: _i2.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+        ),
+      ],
+      foreignKeys: [],
+      indexes: [
+        _i2.IndexDefinition(
+          indexName: 'training_quota_pkey',
+          tableSpace: null,
+          elements: [
+            _i2.IndexElementDefinition(
+              type: _i2.IndexElementDefinitionType.column,
+              definition: 'id',
+            ),
+          ],
+          type: 'btree',
+          isUnique: true,
+          isPrimary: true,
+        ),
+        _i2.IndexDefinition(
+          indexName: 'quota_user_unique',
+          tableSpace: null,
+          elements: [
+            _i2.IndexElementDefinition(
+              type: _i2.IndexElementDefinitionType.column,
+              definition: 'userId',
+            ),
+          ],
+          type: 'btree',
+          isUnique: true,
+          isPrimary: false,
+        ),
+      ],
+      managed: true,
+    ),
     ..._i3.Protocol.targetTableDefinitions,
     ..._i4.Protocol.targetTableDefinitions,
     ..._i2.Protocol.targetTableDefinitions,
@@ -596,81 +663,97 @@ class Protocol extends _i1.SerializationManagerServer {
       }
     }
 
-    if (t == _i5.Greeting) {
-      return _i5.Greeting.fromJson(data) as T;
+    if (t == _i5.EvidenceRetentionPurgeModel) {
+      return _i5.EvidenceRetentionPurgeModel.fromJson(data) as T;
     }
-    if (t == _i6.BoardEntry) {
-      return _i6.BoardEntry.fromJson(data) as T;
+    if (t == _i6.Greeting) {
+      return _i6.Greeting.fromJson(data) as T;
     }
-    if (t == _i7.LearnerProfile) {
-      return _i7.LearnerProfile.fromJson(data) as T;
+    if (t == _i7.BoardEntry) {
+      return _i7.BoardEntry.fromJson(data) as T;
     }
-    if (t == _i8.PracticeAssignment) {
-      return _i8.PracticeAssignment.fromJson(data) as T;
+    if (t == _i8.LearnerProfile) {
+      return _i8.LearnerProfile.fromJson(data) as T;
     }
-    if (t == _i9.PracticeRepetition) {
-      return _i9.PracticeRepetition.fromJson(data) as T;
+    if (t == _i9.PracticeAssignment) {
+      return _i9.PracticeAssignment.fromJson(data) as T;
     }
-    if (t == _i10.TrainingAttempt) {
-      return _i10.TrainingAttempt.fromJson(data) as T;
+    if (t == _i10.PracticeRepetition) {
+      return _i10.PracticeRepetition.fromJson(data) as T;
     }
-    if (t == _i11.TrainingBest) {
-      return _i11.TrainingBest.fromJson(data) as T;
+    if (t == _i11.TrainingAttempt) {
+      return _i11.TrainingAttempt.fromJson(data) as T;
     }
-    if (t == _i12.TrainingCatalogEntry) {
-      return _i12.TrainingCatalogEntry.fromJson(data) as T;
+    if (t == _i12.TrainingBest) {
+      return _i12.TrainingBest.fromJson(data) as T;
     }
-    if (t == _i13.TrainingChunk) {
-      return _i13.TrainingChunk.fromJson(data) as T;
+    if (t == _i13.TrainingCatalogEntry) {
+      return _i13.TrainingCatalogEntry.fromJson(data) as T;
     }
-    if (t == _i14.TrainingError) {
-      return _i14.TrainingError.fromJson(data) as T;
+    if (t == _i14.TrainingChunk) {
+      return _i14.TrainingChunk.fromJson(data) as T;
     }
-    if (t == _i1.getType<_i5.Greeting?>()) {
-      return (data != null ? _i5.Greeting.fromJson(data) : null) as T;
+    if (t == _i15.TrainingError) {
+      return _i15.TrainingError.fromJson(data) as T;
     }
-    if (t == _i1.getType<_i6.BoardEntry?>()) {
-      return (data != null ? _i6.BoardEntry.fromJson(data) : null) as T;
+    if (t == _i16.TrainingQuota) {
+      return _i16.TrainingQuota.fromJson(data) as T;
     }
-    if (t == _i1.getType<_i7.LearnerProfile?>()) {
-      return (data != null ? _i7.LearnerProfile.fromJson(data) : null) as T;
-    }
-    if (t == _i1.getType<_i8.PracticeAssignment?>()) {
-      return (data != null ? _i8.PracticeAssignment.fromJson(data) : null) as T;
-    }
-    if (t == _i1.getType<_i9.PracticeRepetition?>()) {
-      return (data != null ? _i9.PracticeRepetition.fromJson(data) : null) as T;
-    }
-    if (t == _i1.getType<_i10.TrainingAttempt?>()) {
-      return (data != null ? _i10.TrainingAttempt.fromJson(data) : null) as T;
-    }
-    if (t == _i1.getType<_i11.TrainingBest?>()) {
-      return (data != null ? _i11.TrainingBest.fromJson(data) : null) as T;
-    }
-    if (t == _i1.getType<_i12.TrainingCatalogEntry?>()) {
-      return (data != null ? _i12.TrainingCatalogEntry.fromJson(data) : null)
+    if (t == _i1.getType<_i5.EvidenceRetentionPurgeModel?>()) {
+      return (data != null
+              ? _i5.EvidenceRetentionPurgeModel.fromJson(data)
+              : null)
           as T;
     }
-    if (t == _i1.getType<_i13.TrainingChunk?>()) {
-      return (data != null ? _i13.TrainingChunk.fromJson(data) : null) as T;
+    if (t == _i1.getType<_i6.Greeting?>()) {
+      return (data != null ? _i6.Greeting.fromJson(data) : null) as T;
     }
-    if (t == _i1.getType<_i14.TrainingError?>()) {
-      return (data != null ? _i14.TrainingError.fromJson(data) : null) as T;
+    if (t == _i1.getType<_i7.BoardEntry?>()) {
+      return (data != null ? _i7.BoardEntry.fromJson(data) : null) as T;
     }
-    if (t == List<_i15.TrainingCatalogEntry>) {
+    if (t == _i1.getType<_i8.LearnerProfile?>()) {
+      return (data != null ? _i8.LearnerProfile.fromJson(data) : null) as T;
+    }
+    if (t == _i1.getType<_i9.PracticeAssignment?>()) {
+      return (data != null ? _i9.PracticeAssignment.fromJson(data) : null) as T;
+    }
+    if (t == _i1.getType<_i10.PracticeRepetition?>()) {
+      return (data != null ? _i10.PracticeRepetition.fromJson(data) : null)
+          as T;
+    }
+    if (t == _i1.getType<_i11.TrainingAttempt?>()) {
+      return (data != null ? _i11.TrainingAttempt.fromJson(data) : null) as T;
+    }
+    if (t == _i1.getType<_i12.TrainingBest?>()) {
+      return (data != null ? _i12.TrainingBest.fromJson(data) : null) as T;
+    }
+    if (t == _i1.getType<_i13.TrainingCatalogEntry?>()) {
+      return (data != null ? _i13.TrainingCatalogEntry.fromJson(data) : null)
+          as T;
+    }
+    if (t == _i1.getType<_i14.TrainingChunk?>()) {
+      return (data != null ? _i14.TrainingChunk.fromJson(data) : null) as T;
+    }
+    if (t == _i1.getType<_i15.TrainingError?>()) {
+      return (data != null ? _i15.TrainingError.fromJson(data) : null) as T;
+    }
+    if (t == _i1.getType<_i16.TrainingQuota?>()) {
+      return (data != null ? _i16.TrainingQuota.fromJson(data) : null) as T;
+    }
+    if (t == List<_i17.TrainingCatalogEntry>) {
       return (data as List)
-              .map((e) => deserialize<_i15.TrainingCatalogEntry>(e))
+              .map((e) => deserialize<_i17.TrainingCatalogEntry>(e))
               .toList()
           as T;
     }
-    if (t == List<_i16.TrainingAttempt>) {
+    if (t == List<_i18.TrainingAttempt>) {
       return (data as List)
-              .map((e) => deserialize<_i16.TrainingAttempt>(e))
+              .map((e) => deserialize<_i18.TrainingAttempt>(e))
               .toList()
           as T;
     }
-    if (t == List<_i17.BoardEntry>) {
-      return (data as List).map((e) => deserialize<_i17.BoardEntry>(e)).toList()
+    if (t == List<_i19.BoardEntry>) {
+      return (data as List).map((e) => deserialize<_i19.BoardEntry>(e)).toList()
           as T;
     }
     try {
@@ -687,16 +770,18 @@ class Protocol extends _i1.SerializationManagerServer {
 
   static String? getClassNameForType(Type type) {
     return switch (type) {
-      _i5.Greeting => 'Greeting',
-      _i6.BoardEntry => 'BoardEntry',
-      _i7.LearnerProfile => 'LearnerProfile',
-      _i8.PracticeAssignment => 'PracticeAssignment',
-      _i9.PracticeRepetition => 'PracticeRepetition',
-      _i10.TrainingAttempt => 'TrainingAttempt',
-      _i11.TrainingBest => 'TrainingBest',
-      _i12.TrainingCatalogEntry => 'TrainingCatalogEntry',
-      _i13.TrainingChunk => 'TrainingChunk',
-      _i14.TrainingError => 'TrainingError',
+      _i5.EvidenceRetentionPurgeModel => 'EvidenceRetentionPurgeModel',
+      _i6.Greeting => 'Greeting',
+      _i7.BoardEntry => 'BoardEntry',
+      _i8.LearnerProfile => 'LearnerProfile',
+      _i9.PracticeAssignment => 'PracticeAssignment',
+      _i10.PracticeRepetition => 'PracticeRepetition',
+      _i11.TrainingAttempt => 'TrainingAttempt',
+      _i12.TrainingBest => 'TrainingBest',
+      _i13.TrainingCatalogEntry => 'TrainingCatalogEntry',
+      _i14.TrainingChunk => 'TrainingChunk',
+      _i15.TrainingError => 'TrainingError',
+      _i16.TrainingQuota => 'TrainingQuota',
       _ => null,
     };
   }
@@ -714,26 +799,30 @@ class Protocol extends _i1.SerializationManagerServer {
     }
 
     switch (data) {
-      case _i5.Greeting():
+      case _i5.EvidenceRetentionPurgeModel():
+        return 'EvidenceRetentionPurgeModel';
+      case _i6.Greeting():
         return 'Greeting';
-      case _i6.BoardEntry():
+      case _i7.BoardEntry():
         return 'BoardEntry';
-      case _i7.LearnerProfile():
+      case _i8.LearnerProfile():
         return 'LearnerProfile';
-      case _i8.PracticeAssignment():
+      case _i9.PracticeAssignment():
         return 'PracticeAssignment';
-      case _i9.PracticeRepetition():
+      case _i10.PracticeRepetition():
         return 'PracticeRepetition';
-      case _i10.TrainingAttempt():
+      case _i11.TrainingAttempt():
         return 'TrainingAttempt';
-      case _i11.TrainingBest():
+      case _i12.TrainingBest():
         return 'TrainingBest';
-      case _i12.TrainingCatalogEntry():
+      case _i13.TrainingCatalogEntry():
         return 'TrainingCatalogEntry';
-      case _i13.TrainingChunk():
+      case _i14.TrainingChunk():
         return 'TrainingChunk';
-      case _i14.TrainingError():
+      case _i15.TrainingError():
         return 'TrainingError';
+      case _i16.TrainingQuota():
+        return 'TrainingQuota';
     }
     className = _i2.Protocol().getClassNameForObject(data);
     if (className != null) {
@@ -756,35 +845,41 @@ class Protocol extends _i1.SerializationManagerServer {
     if (dataClassName is! String) {
       return super.deserializeByClassName(data);
     }
+    if (dataClassName == 'EvidenceRetentionPurgeModel') {
+      return deserialize<_i5.EvidenceRetentionPurgeModel>(data['data']);
+    }
     if (dataClassName == 'Greeting') {
-      return deserialize<_i5.Greeting>(data['data']);
+      return deserialize<_i6.Greeting>(data['data']);
     }
     if (dataClassName == 'BoardEntry') {
-      return deserialize<_i6.BoardEntry>(data['data']);
+      return deserialize<_i7.BoardEntry>(data['data']);
     }
     if (dataClassName == 'LearnerProfile') {
-      return deserialize<_i7.LearnerProfile>(data['data']);
+      return deserialize<_i8.LearnerProfile>(data['data']);
     }
     if (dataClassName == 'PracticeAssignment') {
-      return deserialize<_i8.PracticeAssignment>(data['data']);
+      return deserialize<_i9.PracticeAssignment>(data['data']);
     }
     if (dataClassName == 'PracticeRepetition') {
-      return deserialize<_i9.PracticeRepetition>(data['data']);
+      return deserialize<_i10.PracticeRepetition>(data['data']);
     }
     if (dataClassName == 'TrainingAttempt') {
-      return deserialize<_i10.TrainingAttempt>(data['data']);
+      return deserialize<_i11.TrainingAttempt>(data['data']);
     }
     if (dataClassName == 'TrainingBest') {
-      return deserialize<_i11.TrainingBest>(data['data']);
+      return deserialize<_i12.TrainingBest>(data['data']);
     }
     if (dataClassName == 'TrainingCatalogEntry') {
-      return deserialize<_i12.TrainingCatalogEntry>(data['data']);
+      return deserialize<_i13.TrainingCatalogEntry>(data['data']);
     }
     if (dataClassName == 'TrainingChunk') {
-      return deserialize<_i13.TrainingChunk>(data['data']);
+      return deserialize<_i14.TrainingChunk>(data['data']);
     }
     if (dataClassName == 'TrainingError') {
-      return deserialize<_i14.TrainingError>(data['data']);
+      return deserialize<_i15.TrainingError>(data['data']);
+    }
+    if (dataClassName == 'TrainingQuota') {
+      return deserialize<_i16.TrainingQuota>(data['data']);
     }
     if (dataClassName.startsWith('serverpod.')) {
       data['className'] = dataClassName.substring(10);
@@ -822,18 +917,20 @@ class Protocol extends _i1.SerializationManagerServer {
       }
     }
     switch (t) {
-      case _i7.LearnerProfile:
-        return _i7.LearnerProfile.t;
-      case _i8.PracticeAssignment:
-        return _i8.PracticeAssignment.t;
-      case _i9.PracticeRepetition:
-        return _i9.PracticeRepetition.t;
-      case _i10.TrainingAttempt:
-        return _i10.TrainingAttempt.t;
-      case _i11.TrainingBest:
-        return _i11.TrainingBest.t;
-      case _i13.TrainingChunk:
-        return _i13.TrainingChunk.t;
+      case _i8.LearnerProfile:
+        return _i8.LearnerProfile.t;
+      case _i9.PracticeAssignment:
+        return _i9.PracticeAssignment.t;
+      case _i10.PracticeRepetition:
+        return _i10.PracticeRepetition.t;
+      case _i11.TrainingAttempt:
+        return _i11.TrainingAttempt.t;
+      case _i12.TrainingBest:
+        return _i12.TrainingBest.t;
+      case _i14.TrainingChunk:
+        return _i14.TrainingChunk.t;
+      case _i16.TrainingQuota:
+        return _i16.TrainingQuota.t;
     }
     return null;
   }

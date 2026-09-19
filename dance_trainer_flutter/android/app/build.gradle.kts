@@ -5,6 +5,16 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val releaseStore = System.getenv("DANCE_KEYSTORE_PATH")
+val releaseAlias = System.getenv("DANCE_KEY_ALIAS")
+val releaseStorePassword = System.getenv("DANCE_KEYSTORE_PASSWORD")
+val releaseKeyPassword = System.getenv("DANCE_KEY_PASSWORD")
+val hasReleaseSigning = listOf(releaseStore, releaseAlias, releaseStorePassword, releaseKeyPassword)
+    .all { !it.isNullOrBlank() }
+if (gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) } && !hasReleaseSigning) {
+    throw GradleException("Release signing is missing. Set DANCE_KEYSTORE_PATH, DANCE_KEY_ALIAS, DANCE_KEYSTORE_PASSWORD and DANCE_KEY_PASSWORD.")
+}
+
 android {
     namespace = "com.example.dance_trainer_flutter"
     compileSdk = flutter.compileSdkVersion
@@ -30,11 +40,20 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStore!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
         }
     }
 }

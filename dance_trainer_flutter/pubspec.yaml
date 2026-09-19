@@ -45,6 +45,7 @@ dependencies:
   serverpod_auth_idp_flutter: 3.4.13
 
 dev_dependencies:
+  sqflite_common_ffi: ^2.3.6
   flutter_lints: '>=3.0.0 <7.0.0'
   flutter_test:
     sdk: flutter

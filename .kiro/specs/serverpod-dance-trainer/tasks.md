@@ -1,6 +1,6 @@
 # Implementation Plan — Serverpod Dance Trainer
 
-> Implementation update, 19 September 2026: the earlier "server never started" and "no gameplay code" notes below describe the initial scaffold and are superseded by `docs/verification.md`. The training flow, persisted attempts, practice loop, SMTP delivery and real native inference now have implementation and local checks. Checkboxes remain conservative because many numbered tasks also require device trials, reviewed beat annotations, deployment or learner evaluation. Those gates are not completed by a host test.
+> Current implementation status: see [the development audit](../../../docs/development_status.md) and [verification](../../../docs/verification.md). Completed code tasks below have host checks; device, learner, production and submission gates remain separate.
 
 
 Deadline: **14 October 2026, 23:59 CEST**. No extensions. Judging access must hold until 20 October 17:00 CEST.
@@ -17,15 +17,16 @@ Each task references the requirements it satisfies. Exit criteria are technical 
 
 - [x] 0.1 Initialize the repository independently and generate the Serverpod project scaffold with the selected released toolchain. Record exact Serverpod, Dart and Flutter versions in `README.md` and commit lockfiles.
   - Ensure the first commit is dated on or after 15 September 2026 17:30 CEST.
-  - **Done 19 Sep.** Flutter 3.35.7 / Dart 3.9.2 installed and verified. `serverpod create dance_trainer` scaffolded `dance_trainer_server`, `dance_trainer_client` and `dance_trainer_flutter` (Serverpod 3.4.13 — 4.0.1 exists but was not targeted; **revisit before the version freeze in task 6.10**), then moved from the nested `dance_trainer/` folder the generator creates up to repo root to match design.md's layout. A root `pubspec.yaml` declares a Dart pub workspace over all four packages (`packages/dance_domain` + the three generated ones) so one `dart pub get` resolves everything together. Both generated packages pass `dart analyze` with zero issues. `dance_domain` is wired in as a real `path:` dependency on both the server and Flutter sides — proven by actually running code that calls it from inside `dance_trainer_server` (not just resolving in the analyzer), which printed the correct score. What's NOT done: no reachable, credentialed Postgres, so the server has never actually started (`serverpod_test` integration tests confirmed this by timing out after 30s waiting for a database — see `docs/toolchain_status.md`).
+  - **Verified 19 Sep.** Flutter 3.38.9, Dart 3.10.8 and Serverpod 3.4.13. The four-package workspace resolves, the server compiles, PostgreSQL integration tests pass, and the independent Git/LFS repository has its initial commit.
   - _Requirements: 1.1, 1.2, 18.2, 19.8_
 - [x] 0.2 Create the `packages/dance_domain` pure Dart package with `pose/`, `scoring/`, `content/` and `test/fixtures/` directories and no Flutter, FFI or Serverpod dependency.
-  - **Done 19 Sep.** `pose/` and `scoring/` are populated and tested; `content/` and `test/fixtures/` exist as empty directories pending task 2.x (content compiler, fixture traces).
+  - **Verified 19 Sep.** Pure domain code includes pose, scoring and content parsing. Boundary and domain tests pass without Flutter, FFI or Serverpod dependencies.
   - _Requirements: 8.1_
 - [x] 0.3 Add a CI import-boundary check that fails the build when `dance_domain` imports Flutter, FFI or Serverpod, or when the Flutter app imports the server package.
-  - **Done 19 Sep, both halves.** `scripts/check_domain_boundary.sh` checks (a) `dance_domain`'s pubspec and imports for Flutter/FFI/Serverpod, and (b) `dance_trainer_flutter`'s pubspec and imports for a direct `dance_trainer_server` dependency. Both halves verified with a negative control — injecting the forbidden import/dependency makes the script fail with a specific message naming the offending line, removing it makes it pass again. Not yet wired into an actual CI runner — no CI provider is configured in this repo.
+  - **Verified 19 Sep.** `scripts/check_domain_boundary.sh` enforces both domain purity and client/server package separation. It is wired into CI; hosted execution remains pending.
   - _Requirements: 8.1_
-- [ ] 0.4 Set up formatting, static analysis, domain unit tests and server integration tests in CI.
+- [x] 0.4 Set up formatting, static analysis, domain unit tests and server integration tests in CI.
+  - CI defines formatting, analysis, generation drift, all test suites, content determinism, Docker and Android debug builds. A hosted run remains unverified.
   - _Requirements: 8.3_
 - [ ] 0.5 Add environment configuration templates with no committed secrets, seed data, and a documented development account flow.
   - _Requirements: 18.4_
@@ -91,7 +92,7 @@ Each task references the requirements it satisfies. Exit criteria are technical 
   - _Requirements: 8.10, 17.7_
 - [x] 2.3 Implement `MediaProbe`: measure real MP3 and MP4 durations and audio tracks per routine, decide the audible playback master, and store verified offsets and trim mappings explicitly.
   - **Decided 19 Sep from measurement** (`docs/content_audit.md`): the **MP4's embedded AAC track is the playback master for both routines**, so the verified offset is zero by construction. The separate MP3s remain archival and are never played. `howdeepisyourlove.mp3` is 26.75 s longer than its video — the video is a trimmed excerpt from an unknown position, and using the MP3 would bake an unknown offset into every score for that routine.
-  - Still to implement: the probe as a pipeline step that re-asserts this per routine, so distribution content cannot silently violate it.
+  - The development compiler invokes ffprobe for video dimensions and duration. General distribution-content alignment and musical annotation checks remain open.
   - _Requirements: 9.1_
 - [ ] 2.4 Define the sidecar annotation format (beat markers with eight-count grouping and tempo changes, sections with stable ids and lead-ins, movement events with target time, type, required landmarks and tolerances, feedback definitions) and author annotations for **`howdeepisyourlove`** (routine 1).
   - Source JSON must remain unedited.
@@ -100,7 +101,8 @@ Each task references the requirements it satisfies. Exit criteria are technical 
   - _Requirements: 8.7, 1.5_
 - [ ] 2.5 Implement the deterministic `ContentCompiler` producing a versioned indexed runtime bundle, with every bundle linked to source hashes, annotation hashes and compiler version.
   - _Requirements: 3.3, 3.5_
-- [ ] 2.6 Write compiler determinism and fidelity tests: identical inputs give byte-identical output, and compiled reference poses reconstruct representative source observations within documented tolerances.
+- [x] 2.6 Write compiler determinism and fidelity tests: identical inputs give byte-identical output, and compiled reference poses reconstruct representative source observations within documented tolerances.
+  - CI checks deterministic rebuilds; recorded-source tests validate pose fidelity and known timing offsets for both routines.
   - _Requirements: 8.3_
 - [ ] 2.7 Write the alignment test asserting that video, separate audio, reference poses and annotated beats agree at the start, middle and end of the full routine.
   - _Requirements: 9.1_
@@ -108,10 +110,10 @@ Each task references the requirements it satisfies. Exit criteria are technical 
   - **Done and tested 19 Sep.** `lib/src/scoring/normalization.dart` (`estimateBodyScale`, `normalizeFeatures`, `NormalizedFeatures`). Body scale is shoulder-to-hip distance (stays measurable even when feet are cropped/occluded). Tested that scaled positions are invariant to the dancer's position and distance from camera, but a lateral step remains clearly distinguishable from feet-together (the exact property the spec calls out: "normalizing away would delete the exact thing a side step is scored on").
   - _Requirements: 8.1_
 - [x] 2.9 Implement bounded event matching: search a window around each event's target content time, use the match for movement quality, retain the signed offset for timing quality, forbid one observation satisfying two events, and forbid unbounded warping.
-  - **Done and tested 19 Sep.** `lib/src/scoring/event_matching.dart` (`ReferenceEvent`, `MatchableObservation`, `matchReferenceEvent`, `jointAngleSimilarity`, `timingSimilarity`). Tests confirm: a candidate exactly at the match-window edge is included, one microsecond past is excluded (bounded window, not unlimited warping); the CLOSEST-IN-TIME candidate is picked, not the best-scoring one (picking by score would let a lucky nearby frame stand in for what the dancer did at the actual beat); an unmeasurable angle is skipped rather than scored as a mismatch. "One observation cannot satisfy two events" is explicitly NOT enforced by this function — a test documents that as the caller's responsibility (removing a matched observation from the candidate pool before matching the next event), same as the aggregator's boundary from task 2.10.
+  - **Verified 19 Sep.** Bounded event matching retains signed offsets. `matchAttemptEvents` prevents reuse of an observation across events and rejects duplicate capture times. Recorded fixtures recover injected early and late offsets.
   - _Requirements: 9.5, 9.6, 9.7_
 - [x] 2.10 Implement the scorer: `eventQuality = 0.6 × movementQuality + 0.4 × timingQuality`, total on 0–10,000 over the full required event weight denominator, zero for observed-but-missed, unassessed for insufficient tracking, coverage reported alongside diagnostics.
-  - **Done and tested 19 Sep.** `lib/src/scoring/attempt_score.dart` (`EventQuality`, `aggregateAttemptScore`). 44 tests pass, including an anti-gaming test proving an unassessed event can only ever lower the total, never raise it (requirement 8.5), and a formula test confirming the exact 0.6/0.4 weighting. What's NOT here yet: bounded event matching against a real reference bundle (task 2.9) — this task covers aggregation of already-matched results, which is the boundary the tests document explicitly.
+  - **Verified 19 Sep.** Coverage and score aggregation are wired to the compiled bundles and server finalization. Regression tests reject missing/nonfinite data and prevent omitted evidence from improving a score.
   - _Requirements: 8.4, 8.5, 8.6, 8.7, 8.8_
 - [x] 2.11 Implement the coverage gate and ranked-eligibility computation from `RunConditions`, suppressing the overall judgment below the gate and attributing the cause to observation rather than the student.
   - **Done and tested 19 Sep.** `lib/src/scoring/ranked_eligibility.dart` (`evaluateRankedEligibility`). Includes a test that walks every `EligibilitySuppressionReason` and asserts none of them read as blaming the student.
@@ -121,9 +123,9 @@ Each task references the requirements it satisfies. Exit criteria are technical 
   - _Requirements: 6.2, 6.3_
 - [ ] 2.13 Record fixture traces on the reference device for correct, early, late, wrong-direction and stationary performance, and commit them as domain test fixtures.
   - _Requirements: 8.3, 17.5_
-- [ ] 2.14 Write the negative-behaviour test suite: no reference-pose fallback, missing data never scores perfectly, unassessed events award nothing, and a hidden section cannot raise the total.
+- [x] 2.14 Write the negative-behaviour test suite: no reference-pose fallback, missing data never scores perfectly, unassessed events award nothing, and a hidden section cannot raise the total.
   - _Requirements: 5.2, 8.5, 8.7_
-- [ ] 2.9a Implement the per-attempt matching loop that calls `matchReferenceEvent` once per reference event and removes a matched observation from the candidate pool before matching the next event, closing the gap tasks 2.9/2.10's tests deliberately left open (requirement 9.7 — "one observation cannot satisfy two events" is enforced HERE, not inside `matchReferenceEvent` or `aggregateAttemptScore`).
+- [x] 2.9a Implement the per-attempt matching loop that calls `matchReferenceEvent` once per reference event and removes a matched observation from the candidate pool before matching the next event, closing the gap tasks 2.9/2.10's tests deliberately left open (requirement 9.7 — "one observation cannot satisfy two events" is enforced HERE, not inside `matchReferenceEvent` or `aggregateAttemptScore`).
   - _Requirements: 9.7_
 - [ ] 2.15 Implement per-section aggregation producing `AttemptSectionResult` values with evidence-backed error summaries.
   - _Requirements: 11.1_
@@ -151,7 +153,8 @@ Each task references the requirements it satisfies. Exit criteria are technical 
   - _Requirements: 7.4, 7.7, 2.4_
 - [ ] 3.2 Configure the Serverpod authentication module with real email delivery for the deployed environment, and implement register, verify, sign in, refresh, recover and sign out.
   - _Requirements: 2.1, 2.5, 18.1_
-- [ ] 3.3 Implement the profile endpoint (get/update own, set leaderboard visibility, request deletion) with server-derived ownership and no credential duplication.
+- [x] 3.3 Implement the profile endpoint (get/update own, set leaderboard visibility, request deletion) with server-derived ownership and no credential duplication.
+  - Owned profile updates and complete account deletion are transactional. Tests include linked email identities and rejection of stale authenticated identities.
   - _Requirements: 2.3, 2.4, 15.3_
 - [ ] 3.4 Implement the catalog endpoint returning published routines and compatible immutable manifests with bundle locations, and register routine 1's manifest.
   - _Requirements: 3.1, 3.5_
@@ -171,23 +174,25 @@ Each task references the requirements it satisfies. Exit criteria are technical 
   - _Requirements: 5.3, 6.5, 6.6, 6.7_
 - [ ] 3.12 Implement the ranked attempt ticket: server-issued opaque ticket bound to content and scoring version with an expiry covering routine duration plus upload grace, sized for the ~200-second routine.
   - _Requirements: 7.1_
-- [ ] 3.13 Implement the durable SQLite outbox with per-account partitioning, appending compact observations during the run at an initial 10–15 observations per second.
+- [x] 3.13 Implement the durable SQLite outbox with per-account partitioning, appending compact observations during the run at an initial 10–15 observations per second.
   - _Requirements: 7.2, 7.8_
-- [ ] 3.14 Implement sequenced idempotent chunk upload with explicit payload limits (initial targets: chunk under 256 KiB, attempt budget around 6 MiB) that fails with an actionable error rather than truncating.
+- [x] 3.14 Implement sequenced idempotent chunk upload with explicit payload limits (initial targets: chunk under 256 KiB, attempt budget around 6 MiB) that fails with an actionable error rather than truncating.
   - _Requirements: 7.3, 7.4, 7.12_
 - [ ] 3.15 Implement server finalization: completeness, ticket, version and coverage checks, authoritative recomputation with `dance_domain`, and a single transaction writing attempt result, section results, progress and leaderboard update.
   - _Requirements: 8.2, 8.3, 7.5, 7.6_
-- [ ] 3.16 Implement outbox retry with bounded exponential backoff, resume from last acknowledged chunk, app-restart recovery, and auth-expiry handling that never re-attributes queued evidence.
+- [x] 3.16 Implement outbox retry with bounded exponential backoff, resume from last acknowledged chunk, app-restart recovery, and auth-expiry handling that never re-attributes queued evidence.
+  - The queue resumes at the server's acknowledged chunk, isolates failures, persists capped backoff and restores completed local results after restart. FakeTrainingClient and FakeAccountRepository are test-only fault injection; production uses Serverpod and its auth session. Physical app-kill and auth-refresh acceptance remain in phase 6.
   - _Requirements: 7.8, 7.9_
-- [ ] 3.17 Implement ticket-expiry handling: save as unranked history, exclude from leaderboards, state the reason.
+- [x] 3.17 Implement ticket-expiry handling: save as unranked history, exclude from leaderboards, state the reason.
   - _Requirements: 7.10_
 - [ ] 3.18 Build the results screen: total, movement and timing subscores, combo, coverage, personal-best comparison, final/pending/unranked marking with reason, section timeline, plain-language recommendation, and the "Practice this section" primary action.
+  - Saved/pending results, coverage, section scores and practice action are implemented. Separate movement/timing subscores, combo and richer personal-best presentation remain.
   - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5_
-- [ ] 3.19 Implement the insufficient-evidence result path recommending camera adjustment and retry without inventing a dance correction.
+- [x] 3.19 Implement the insufficient-evidence result path recommending camera adjustment and retry without inventing a dance correction.
   - _Requirements: 10.6_
-- [ ] 3.20 Write server integration tests for cross-account rejection, idempotent upload and finalization, chunk sequence conflict, and duplicate finalization returning the existing result.
+- [x] 3.20 Write server integration tests for cross-account rejection, idempotent upload and finalization, chunk sequence conflict, and duplicate finalization returning the existing result.
   - _Requirements: 7.4, 7.6, 15.4_
-- [ ] 3.21 Write the client/server scoring parity test running identical fixtures through both tiers with the same configuration version.
+- [x] 3.21 Write the client/server scoring parity test running identical fixtures through both tiers with the same configuration version.
   - _Requirements: 8.3_
 
 ---
@@ -202,13 +207,14 @@ Each task references the requirements it satisfies. Exit criteria are technical 
   - _Requirements: 11.1, 11.2, 11.3, 11.6_
 - [ ] 4.3 Implement typed fallback recommendations (`recalibrateCamera`, `replayRoutine`, `optionalRefinement`) for the no-reliable-error case.
   - _Requirements: 11.5, 10.7_
-- [ ] 4.4 Implement the practice endpoint: get recommendation for an owned attempt, start assignment, record and finalize repetitions, complete assignment.
+- [x] 4.4 Implement the practice endpoint: get recommendation for an owned attempt, start assignment, record and finalize repetitions, complete assignment.
   - _Requirements: 11.4, 13.4_
 - [ ] 4.5 Build the drill screen: assignment load, short preview, musical count-in, three measured normal-speed repetitions, per-repetition timestamp origin and observation flush between repetitions.
   - _Requirements: 12.1, 12.2, 12.3, 12.5_
-- [ ] 4.6 Implement drill completion based on sufficient tracking coverage across the required repetitions, without implying mastery, and offer another attempt when performance remains weak.
+- [x] 4.6 Implement drill completion based on sufficient tracking coverage across the required repetitions, without implying mastery, and offer another attempt when performance remains weak.
   - _Requirements: 12.6, 12.7_
 - [ ] 4.7 Build the drill result screen comparing the focus metric before and after only across comparable speed, model, content and scoring versions, stating the concrete observed change.
+  - History reports comparable-attempt score changes and coverage. The drill-specific focus-metric result screen remains.
   - _Requirements: 13.1, 13.2_
 - [ ] 4.8 Implement the replay action as the primary next step and ensure assignment completion updates progress exactly once.
   - _Requirements: 13.3, 13.4_
@@ -234,6 +240,7 @@ Each task references the requirements it satisfies. Exit criteria are technical 
 - [ ] 5.4 Implement atomic concurrency-safe personal-best updates and write a concurrent-finalization test.
   - _Requirements: 14.5_
 - [ ] 5.5 Implement leaderboard and progress endpoints with deterministic pagination, current-user rank, visibility filtering, and no private field exposure.
+  - History now uses an ID cursor and remains account scoped. Current-user leaderboard rank and leaderboard pagination remain.
   - _Requirements: 14.6, 2.7, 2.8_
 - [ ] 5.6 Build the leaderboard and progress screens, including the honest empty state and version-filtered trends with no blended improvement percentage.
   - _Requirements: 14.7, 13.5, 13.6_
@@ -243,10 +250,13 @@ Each task references the requirements it satisfies. Exit criteria are technical 
 - [ ] 5.8 Register routine 2's manifest and test it end to end, including bundled-versus-downloaded acquisition.
   - _Requirements: 3.7, 3.8_
 - [ ] 5.9 Build the settings screen: mirror preference, skeleton overlay, audio cues, download management, profile editing, leaderboard visibility, sign-out and account deletion.
+  - Profile, opt-in visibility, sign-out, account deletion and download management are implemented. Broader preference persistence and overlay/audio controls remain.
   - _Requirements: 15.1_
-- [ ] 5.10 Implement the documented account-deletion server workflow removing results, drills, progress and leaderboard records.
+- [x] 5.10 Implement the documented account-deletion server workflow removing results, drills, progress and leaderboard records.
+  - Deletion removes auth identities and all training tables for the owner. Client deletion clears that account's local queue; copied offline data on another device is not remotely erased.
   - _Requirements: 15.2_
 - [ ] 5.11 Implement the documented pose-trace retention policy, structured logging with no token or payload contents, and request-rate limits with plausibility checks.
+  - Implemented immediate finalized-pose cleanup, a seven-day abandoned-upload retention job, and per-account quotas. Production ingress limits, structured-log deployment review and operational monitoring remain.
   - _Requirements: 15.6, 15.7, 18.5, 14.8_
 
 ---

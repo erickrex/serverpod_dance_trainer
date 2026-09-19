@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'src/auth/verification_mail.dart';
 import 'src/training/content_store.dart';
+import 'src/training/evidence_retention.dart';
 
 import 'package:serverpod/serverpod.dart';
 import 'package:serverpod_auth_idp_server/core.dart';
@@ -82,6 +83,14 @@ void run(List<String> args) async {
 
   // Start the server.
   await pod.start();
+  await pod.futureCalls.cancel(EvidenceRetention.identifier);
+  await pod.futureCalls
+      .callWithDelay(
+        Duration.zero,
+        identifier: EvidenceRetention.identifier,
+      )
+      .evidenceRetention
+      .invoke(null);
 }
 
 Future<void> _sendRegistrationCode(

@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:dance_domain/dance_domain.dart';
 import 'package:serverpod/serverpod.dart';
+import 'package:serverpod_auth_idp_server/core.dart';
 import '../generated/protocol.dart';
 import 'content_store.dart';
 
@@ -12,12 +13,48 @@ class TrainingEndpoint extends Endpoint {
   String _user(Session s) => s.authenticated!.userIdentifier;
   Never _fail(String code, String message) =>
       throw TrainingError(code: code, message: message);
-  Future<void> _lock(Session s, Transaction tx) async {
+  Future<void> _lock(
+    Session s,
+    Transaction tx, {
+    bool allowDeleted = false,
+  }) async {
     await s.db.unsafeQuery(
       'SELECT pg_advisory_xact_lock(hashtextextended(@key, 0))',
       parameters: QueryParameters.named({'key': 'dance:${_user(s)}'}),
       transaction: tx,
     );
+    // JWTs can outlive deletion. Check the account inside the same lock as writes.
+    final account = await AuthUser.db.findById(
+      s,
+      UuidValue.fromString(_user(s)),
+      transaction: tx,
+    );
+    if (account == null && allowDeleted) return;
+    if (account == null || account.blocked) {
+      _fail('account', 'This account is no longer available. Sign in again.');
+    }
+    final now = DateTime.now().toUtc();
+    var quota = await TrainingQuota.db.findFirstRow(
+      s,
+      where: (t) => t.userId.equals(_user(s)),
+      transaction: tx,
+    );
+    if (quota == null) {
+      quota = TrainingQuota(userId: _user(s), windowStart: now, requests: 0);
+    } else if (now.difference(quota.windowStart) >=
+        const Duration(minutes: 1)) {
+      quota.windowStart = now;
+      quota.requests = 0;
+    }
+    if (quota.requests >= 300) {
+      _fail('rateLimit', 'Too many requests. Wait a minute and retry.');
+    }
+    quota.requests++;
+    if (quota.id == null) {
+      await TrainingQuota.db.insertRow(s, quota, transaction: tx);
+    } else {
+      await TrainingQuota.db.updateRow(s, quota, transaction: tx);
+    }
   }
 
   Future<TrainingAttempt> _owned(Session s, int id, Transaction tx) async {
@@ -59,10 +96,72 @@ class TrainingEndpoint extends Endpoint {
         RegExp(r'[\x00-\x1f]').hasMatch(display)) {
       _fail('invalid', 'Use a name with 1 to 40 characters.');
     }
-    final row = await profile(session);
-    row.displayName = display;
-    row.leaderboardVisible = visible;
-    return LearnerProfile.db.updateRow(session, row);
+    return session.db.transaction((tx) async {
+      await _lock(session, tx);
+      final row = await LearnerProfile.db.findFirstRow(
+        session,
+        where: (t) => t.userId.equals(_user(session)),
+        transaction: tx,
+      );
+      if (row == null) {
+        return LearnerProfile.db.insertRow(
+          session,
+          LearnerProfile(
+            userId: _user(session),
+            displayName: display,
+            leaderboardVisible: visible,
+          ),
+          transaction: tx,
+        );
+      }
+      row.displayName = display;
+      row.leaderboardVisible = visible;
+      return LearnerProfile.db.updateRow(session, row, transaction: tx);
+    });
+  }
+
+  Future<void> deleteAccount(Session session) async {
+    await session.db.transaction((tx) async {
+      await _lock(session, tx, allowDeleted: true);
+      final parameters = QueryParameters.named({'user': _user(session)});
+      for (final sql in [
+        'DELETE FROM practice_repetition WHERE "assignmentId" IN (SELECT id FROM practice_assignment WHERE "userId"=@user) OR "attemptId" IN (SELECT id FROM training_attempt WHERE "userId"=@user)',
+        'DELETE FROM training_chunk WHERE "attemptId" IN (SELECT id FROM training_attempt WHERE "userId"=@user)',
+        'DELETE FROM practice_assignment WHERE "userId"=@user',
+        'DELETE FROM training_best WHERE "userId"=@user',
+        'DELETE FROM training_attempt WHERE "userId"=@user',
+        'DELETE FROM learner_profile WHERE "userId"=@user',
+        'DELETE FROM training_quota WHERE "userId"=@user',
+      ]) {
+        await session.db.unsafeExecute(
+          sql,
+          parameters: parameters,
+          transaction: tx,
+        );
+      }
+      // Cascades through Serverpod's email identities, profiles and refresh tokens.
+      final id = UuidValue.fromString(_user(session));
+      if (await AuthUser.db.findById(session, id, transaction: tx) != null) {
+        await const AuthUsers().delete(
+          session,
+          authUserId: id,
+          transaction: tx,
+        );
+      }
+    });
+  }
+
+  Future<TrainingAttempt> resumeUpload(
+    Session session,
+    int attemptId,
+    String ticket,
+  ) {
+    return session.db.transaction((tx) async {
+      await _lock(session, tx);
+      final attempt = await _owned(session, attemptId, tx);
+      if (attempt.ticket != ticket) _fail('ticket', 'Invalid run ticket.');
+      return attempt;
+    });
   }
 
   Future<TrainingAttempt> begin(
@@ -101,6 +200,16 @@ class TrainingEndpoint extends Endpoint {
         return prior;
       }
       final now = DateTime.now().toUtc();
+      final recent = await TrainingAttempt.db.count(
+        session,
+        where: (t) =>
+            t.userId.equals(_user(session)) &
+            (t.createdAt > now.subtract(const Duration(hours: 1))),
+        transaction: tx,
+      );
+      if (recent >= 60) {
+        _fail('rateLimit', 'Run limit reached. Try again later.');
+      }
       return TrainingAttempt.db.insertRow(
         session,
         TrainingAttempt(
@@ -175,6 +284,10 @@ class TrainingEndpoint extends Endpoint {
       if (attempt.status != 'recording') {
         _fail('finalized', 'This attempt is already final.');
       }
+      if (DateTime.now().toUtc().difference(attempt.createdAt) >
+          const Duration(days: 7)) {
+        _fail('expired', 'This unfinished run has expired. Start a new run.');
+      }
       if (sequence != attempt.nextChunk) {
         _fail('sequence', 'Upload the next expected chunk.');
       }
@@ -211,10 +324,17 @@ class TrainingEndpoint extends Endpoint {
       final attempt = await _owned(session, attemptId, tx);
       if (attempt.ticket != ticket) _fail('ticket', 'Invalid run ticket.');
       if (attempt.status == 'complete') return attempt;
+      if (DateTime.now().toUtc().difference(attempt.createdAt) >
+          const Duration(days: 7)) {
+        _fail('expired', 'This unfinished run has expired. Start a new run.');
+      }
       if (expectedChunks < 1 || expectedChunks != attempt.nextChunk) {
         _fail('incomplete', 'Upload all evidence before finalizing.');
       }
-      final bundle = ContentStore.load(attempt.routineId);
+      final bundle = ContentStore.load(
+        attempt.routineId,
+        version: attempt.contentVersion,
+      );
       if (bundle.version != attempt.contentVersion) {
         _fail('version', 'The referenced routine version is unavailable.');
       }
@@ -261,6 +381,12 @@ class TrainingEndpoint extends Endpoint {
       attempt.status = 'complete';
       attempt.resultJson = jsonEncode(result);
       await TrainingAttempt.db.updateRow(session, attempt, transaction: tx);
+      // Keep digests for idempotent upload retries; raw poses are no longer needed.
+      await session.db.unsafeExecute(
+        'UPDATE training_chunk SET "payloadJson"=\'[]\' WHERE "attemptId"=@attempt',
+        parameters: QueryParameters.named({'attempt': attemptId}),
+        transaction: tx,
+      );
       if (result['ranked'] == true) {
         final board =
             '${attempt.contentVersion}:$scoringVersion:${attempt.modelVersion}';
@@ -297,41 +423,54 @@ class TrainingEndpoint extends Endpoint {
   Future<List<TrainingAttempt>> history(
     Session session, {
     int offset = 0,
+    int? beforeId,
   }) async {
-    if (offset < 0 || offset > 100000) _fail('invalid', 'Invalid page.');
-    return TrainingAttempt.db.find(
-      session,
-      where: (t) =>
-          t.userId.equals(_user(session)) & t.status.equals('complete'),
-      orderBy: (t) => t.createdAt,
-      orderDescending: true,
-      limit: 30,
-      offset: offset,
-    );
+    if (offset < 0 || offset > 100000 || (beforeId != null && beforeId < 1)) {
+      _fail('invalid', 'Invalid page.');
+    }
+    return session.db.transaction((tx) async {
+      await _lock(session, tx);
+      return TrainingAttempt.db.find(
+        session,
+        where: (t) =>
+            t.userId.equals(_user(session)) &
+            t.status.equals('complete') &
+            (beforeId == null ? Constant.bool(true) : t.id < beforeId),
+        orderBy: (t) => t.id,
+        orderDescending: true,
+        limit: 30,
+        offset: offset,
+        transaction: tx,
+      );
+    });
   }
 
   Future<List<BoardEntry>> leaderboard(
     Session session,
     String routineId,
   ) async {
-    final bundle = ContentStore.load(routineId);
-    final board = '${bundle.version}:$scoringVersion:$poseModelHash';
-    final rows = await session.db.unsafeQuery(
-      '''SELECT p."displayName", b.score, b."achievedAt"
+    return session.db.transaction((tx) async {
+      await _lock(session, tx);
+      final bundle = ContentStore.load(routineId);
+      final board = '${bundle.version}:$scoringVersion:$poseModelHash';
+      final rows = await session.db.unsafeQuery(
+        '''SELECT p."displayName", b.score, b."achievedAt"
       FROM training_best b JOIN learner_profile p ON p."userId"=b."userId"
       WHERE b."boardKey"=@board AND p."leaderboardVisible"=true
       ORDER BY b.score DESC,b."achievedAt",b.id LIMIT 50''',
-      parameters: QueryParameters.named({'board': board}),
-    );
-    return rows
-        .map(
-          (r) => BoardEntry(
-            displayName: r[0] as String,
-            score: r[1] as int,
-            achievedAt: r[2] as DateTime,
-          ),
-        )
-        .toList();
+        parameters: QueryParameters.named({'board': board}),
+        transaction: tx,
+      );
+      return rows
+          .map(
+            (r) => BoardEntry(
+              displayName: r[0] as String,
+              score: r[1] as int,
+              achievedAt: r[2] as DateTime,
+            ),
+          )
+          .toList();
+    });
   }
 
   Future<PracticeAssignment> practice(

@@ -15,11 +15,14 @@ import '../auth/email_idp_endpoint.dart' as _i2;
 import '../auth/jwt_refresh_endpoint.dart' as _i3;
 import '../greetings/greeting_endpoint.dart' as _i4;
 import '../training/catalog_endpoint.dart' as _i5;
-import '../training/training_endpoint.dart' as _i6;
+import '../training/health_endpoint.dart' as _i6;
+import '../training/training_endpoint.dart' as _i7;
 import 'package:serverpod_auth_idp_server/serverpod_auth_idp_server.dart'
-    as _i7;
-import 'package:serverpod_auth_core_server/serverpod_auth_core_server.dart'
     as _i8;
+import 'package:serverpod_auth_core_server/serverpod_auth_core_server.dart'
+    as _i9;
+import 'package:dance_trainer_server/src/generated/future_calls.dart' as _i10;
+export 'future_calls.dart' show ServerpodFutureCallsGetter;
 
 class Endpoints extends _i1.EndpointDispatch {
   @override
@@ -49,7 +52,13 @@ class Endpoints extends _i1.EndpointDispatch {
           'catalog',
           null,
         ),
-      'training': _i6.TrainingEndpoint()
+      'health': _i6.HealthEndpoint()
+        ..initialize(
+          server,
+          'health',
+          null,
+        ),
+      'training': _i7.TrainingEndpoint()
         ..initialize(
           server,
           'training',
@@ -300,6 +309,22 @@ class Endpoints extends _i1.EndpointDispatch {
         ),
       },
     );
+    connectors['health'] = _i1.EndpointConnector(
+      name: 'health',
+      endpoint: endpoints['health']!,
+      methodConnectors: {
+        'ready': _i1.MethodConnector(
+          name: 'ready',
+          params: {},
+          call:
+              (
+                _i1.Session session,
+                Map<String, dynamic> params,
+              ) async =>
+                  (endpoints['health'] as _i6.HealthEndpoint).ready(session),
+        ),
+      },
+    );
     connectors['training'] = _i1.EndpointConnector(
       name: 'training',
       endpoint: endpoints['training']!,
@@ -311,7 +336,7 @@ class Endpoints extends _i1.EndpointDispatch {
               (
                 _i1.Session session,
                 Map<String, dynamic> params,
-              ) async => (endpoints['training'] as _i6.TrainingEndpoint)
+              ) async => (endpoints['training'] as _i7.TrainingEndpoint)
                   .profile(session),
         ),
         'updateProfile': _i1.MethodConnector(
@@ -333,10 +358,45 @@ class Endpoints extends _i1.EndpointDispatch {
                 _i1.Session session,
                 Map<String, dynamic> params,
               ) async =>
-                  (endpoints['training'] as _i6.TrainingEndpoint).updateProfile(
+                  (endpoints['training'] as _i7.TrainingEndpoint).updateProfile(
                     session,
                     params['name'],
                     params['visible'],
+                  ),
+        ),
+        'deleteAccount': _i1.MethodConnector(
+          name: 'deleteAccount',
+          params: {},
+          call:
+              (
+                _i1.Session session,
+                Map<String, dynamic> params,
+              ) async => (endpoints['training'] as _i7.TrainingEndpoint)
+                  .deleteAccount(session),
+        ),
+        'resumeUpload': _i1.MethodConnector(
+          name: 'resumeUpload',
+          params: {
+            'attemptId': _i1.ParameterDescription(
+              name: 'attemptId',
+              type: _i1.getType<int>(),
+              nullable: false,
+            ),
+            'ticket': _i1.ParameterDescription(
+              name: 'ticket',
+              type: _i1.getType<String>(),
+              nullable: false,
+            ),
+          },
+          call:
+              (
+                _i1.Session session,
+                Map<String, dynamic> params,
+              ) async =>
+                  (endpoints['training'] as _i7.TrainingEndpoint).resumeUpload(
+                    session,
+                    params['attemptId'],
+                    params['ticket'],
                   ),
         ),
         'begin': _i1.MethodConnector(
@@ -372,7 +432,7 @@ class Endpoints extends _i1.EndpointDispatch {
               (
                 _i1.Session session,
                 Map<String, dynamic> params,
-              ) async => (endpoints['training'] as _i6.TrainingEndpoint).begin(
+              ) async => (endpoints['training'] as _i7.TrainingEndpoint).begin(
                 session,
                 params['routineId'],
                 params['version'],
@@ -409,7 +469,7 @@ class Endpoints extends _i1.EndpointDispatch {
               (
                 _i1.Session session,
                 Map<String, dynamic> params,
-              ) async => (endpoints['training'] as _i6.TrainingEndpoint).upload(
+              ) async => (endpoints['training'] as _i7.TrainingEndpoint).upload(
                 session,
                 params['attemptId'],
                 params['ticket'],
@@ -451,7 +511,7 @@ class Endpoints extends _i1.EndpointDispatch {
                 _i1.Session session,
                 Map<String, dynamic> params,
               ) async =>
-                  (endpoints['training'] as _i6.TrainingEndpoint).finalize(
+                  (endpoints['training'] as _i7.TrainingEndpoint).finalize(
                     session,
                     params['attemptId'],
                     params['ticket'],
@@ -468,15 +528,21 @@ class Endpoints extends _i1.EndpointDispatch {
               type: _i1.getType<int>(),
               nullable: false,
             ),
+            'beforeId': _i1.ParameterDescription(
+              name: 'beforeId',
+              type: _i1.getType<int?>(),
+              nullable: true,
+            ),
           },
           call:
               (
                 _i1.Session session,
                 Map<String, dynamic> params,
               ) async =>
-                  (endpoints['training'] as _i6.TrainingEndpoint).history(
+                  (endpoints['training'] as _i7.TrainingEndpoint).history(
                     session,
                     offset: params['offset'],
+                    beforeId: params['beforeId'],
                   ),
         ),
         'leaderboard': _i1.MethodConnector(
@@ -493,7 +559,7 @@ class Endpoints extends _i1.EndpointDispatch {
                 _i1.Session session,
                 Map<String, dynamic> params,
               ) async =>
-                  (endpoints['training'] as _i6.TrainingEndpoint).leaderboard(
+                  (endpoints['training'] as _i7.TrainingEndpoint).leaderboard(
                     session,
                     params['routineId'],
                   ),
@@ -512,7 +578,7 @@ class Endpoints extends _i1.EndpointDispatch {
                 _i1.Session session,
                 Map<String, dynamic> params,
               ) async =>
-                  (endpoints['training'] as _i6.TrainingEndpoint).practice(
+                  (endpoints['training'] as _i7.TrainingEndpoint).practice(
                     session,
                     params['sourceAttemptId'],
                   ),
@@ -535,7 +601,7 @@ class Endpoints extends _i1.EndpointDispatch {
               (
                 _i1.Session session,
                 Map<String, dynamic> params,
-              ) async => (endpoints['training'] as _i6.TrainingEndpoint)
+              ) async => (endpoints['training'] as _i7.TrainingEndpoint)
                   .completeRepetition(
                     session,
                     params['assignmentId'],
@@ -544,9 +610,14 @@ class Endpoints extends _i1.EndpointDispatch {
         ),
       },
     );
-    modules['serverpod_auth_idp'] = _i7.Endpoints()
+    modules['serverpod_auth_idp'] = _i8.Endpoints()
       ..initializeEndpoints(server);
-    modules['serverpod_auth_core'] = _i8.Endpoints()
+    modules['serverpod_auth_core'] = _i9.Endpoints()
       ..initializeEndpoints(server);
+  }
+
+  @override
+  _i1.FutureCallDispatch? get futureCalls {
+    return _i10.FutureCalls();
   }
 }

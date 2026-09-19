@@ -13,9 +13,13 @@ greeting:
   - hello:
 catalog:
   - list:
+health:
+  - ready:
 training:
   - profile:
   - updateProfile:
+  - deleteAccount:
+  - resumeUpload:
   - begin:
   - upload:
   - finalize:

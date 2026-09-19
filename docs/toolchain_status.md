@@ -26,3 +26,5 @@ export ANDROID_HOME=/home/rexbox/dev/dance-android/sdk
 ```
 
 The temporary test cluster is under `/tmp/dance-fixes/postgres-test` and may disappear after a host reset. For a fresh environment use the Compose and configuration steps in the root README. Build logs and scratch probes are under `/tmp/dance-fixes`, outside source control. The local SMTP probe used a capture process; no test double was added to production code.
+
+Recovery tests now use `sqflite_common_ffi` with a real temporary SQLite database on Linux. `FakeTrainingClient` injects transport failures and `FakeAccountRepository` supplies account changes only in the Flutter tests, tracked under task 3.16. The shipped app continues to use the generated Serverpod client and authenticated session. No device or credential is needed to run these tests. The [development audit](development_status.md) records the remaining hardware acceptance work.
