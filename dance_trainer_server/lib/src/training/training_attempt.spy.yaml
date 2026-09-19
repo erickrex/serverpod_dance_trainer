@@ -1,0 +1,23 @@
+class: TrainingAttempt
+table: training_attempt
+fields:
+  userId: String
+  clientUuid: String
+  routineId: String
+  contentVersion: String
+  modelVersion: String
+  mode: String
+  sectionId: String?
+  ticket: String
+  createdAt: DateTime
+  expiresAt: DateTime
+  status: String
+  nextChunk: int
+  payloadBytes: int
+  resultJson: String?
+indexes:
+  attempt_user_uuid_unique:
+    fields: userId, clientUuid
+    unique: true
+  attempt_history_idx:
+    fields: userId, createdAt

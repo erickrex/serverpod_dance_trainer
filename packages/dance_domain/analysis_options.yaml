@@ -1,0 +1,24 @@
+include: package:lints/recommended.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+  errors:
+    # This package must never import Flutter, FFI or Serverpod (design.md
+    # "Dependency boundaries"). There is no analyzer rule that enforces an
+    # ABSENT import, so the CI check in task 0.3 greps pubspec.yaml and every
+    # import directive instead. This file only tightens what the analyzer
+    # itself can catch.
+    todo: ignore
+
+linter:
+  rules:
+    - always_declare_return_types
+    - avoid_dynamic_calls
+    - avoid_type_to_string
+    - prefer_final_locals
+    - prefer_final_in_for_each
+    - unnecessary_null_checks
+    - unawaited_futures

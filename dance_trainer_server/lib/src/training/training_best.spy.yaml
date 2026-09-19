@@ -1,0 +1,13 @@
+class: TrainingBest
+table: training_best
+serverOnly: true
+fields:
+  userId: String
+  boardKey: String
+  attemptId: int
+  score: int
+  achievedAt: DateTime
+indexes:
+  best_user_board_unique:
+    fields: userId, boardKey
+    unique: true

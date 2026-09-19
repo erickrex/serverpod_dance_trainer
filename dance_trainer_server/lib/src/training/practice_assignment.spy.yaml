@@ -1,0 +1,14 @@
+class: PracticeAssignment
+table: practice_assignment
+fields:
+  userId: String
+  sourceAttemptId: int
+  routineId: String
+  contentVersion: String
+  sectionId: String
+  completedRepetitions: int
+  completed: bool
+indexes:
+  assignment_source_unique:
+    fields: userId, sourceAttemptId
+    unique: true

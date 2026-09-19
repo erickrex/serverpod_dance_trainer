@@ -1,0 +1,10 @@
+class: PracticeRepetition
+table: practice_repetition
+serverOnly: true
+fields:
+  assignmentId: int
+  attemptId: int
+indexes:
+  repetition_attempt_unique:
+    fields: attemptId
+    unique: true

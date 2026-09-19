@@ -1,0 +1,10 @@
+class: LearnerProfile
+table: learner_profile
+fields:
+  userId: String
+  displayName: String
+  leaderboardVisible: bool
+indexes:
+  learner_user_unique:
+    fields: userId
+    unique: true

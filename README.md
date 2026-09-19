@@ -1,0 +1,125 @@
+# Serverpod Dance Trainer
+
+An Android Flutter app with camera pose tracking, a shared Dart scorer, and Serverpod persistence. Choose a routine, dance with the instructor video, save a result, and repeat a recommended section.
+
+The implementation now includes real inference, authenticated training endpoints, local evidence storage and retry, server scoring, history, profiles, practice assignments, and an opt-in leaderboard. It is a **development build**. Both routines remain unreviewed and unranked. Physical-device camera timing and sustained performance have not been validated. The broader specification also includes work that remains unfinished; see [verification](docs/verification.md).
+
+## Toolchain
+
+Use Flutter **3.38.9**, Dart **3.10.8**, Serverpod and Serverpod CLI **3.4.13**, JDK 17, and the Android SDK. Android training requires a front camera and API 24 or newer. The current build targets arm64. Native host inference tests require CMake, Ninja, a C++ compiler, and FFmpeg.
+
+```bash
+flutter pub get
+dart pub global activate serverpod_cli 3.4.13
+dart run scripts/configure_local.dart
+bash scripts/verify_content.sh
+```
+
+`configure_local.dart` creates ignored development/test secrets and Compose environment values. It preserves existing configuration. Production secrets and deployment hosts must be configured separately. Keep `config/passwords.yaml`, `.env`, and signing keys out of version control.
+
+## Start the backend
+
+From the repository root, start PostgreSQL. This uses ports 8090 and 9090 and does not require access to a shared PostgreSQL instance on 5432.
+
+```bash
+docker compose -f dance_trainer_server/docker-compose.yaml up -d
+```
+
+Configure SMTP before signing up or resetting a password. Missing configuration produces an error; verification codes are never printed by the app. For local delivery, run an SMTP capture service such as Mailpit:
+
+```bash
+docker run --rm -p 127.0.0.1:1025:1025 -p 127.0.0.1:8025:8025 axllent/mailpit
+```
+
+In a separate terminal:
+
+```bash
+export DANCE_SMTP_HOST=127.0.0.1
+export DANCE_SMTP_PORT=1025
+export DANCE_SMTP_FROM=trainer@example.test
+cd dance_trainer_server
+dart run bin/main.dart --apply-migrations
+```
+
+Open the capture service at `http://localhost:8025` to retrieve local verification emails. For a real provider, set `DANCE_SMTP_HOST`, `DANCE_SMTP_PORT`, `DANCE_SMTP_FROM`, and, when required, `DANCE_SMTP_USER` and `DANCE_SMTP_PASSWORD`. Set `DANCE_SMTP_SSL=true` for implicit TLS. Unencrypted SMTP is accepted only on loopback.
+
+The API listens on 8080 and assets on 8082. Database migrations run before serving requests. To regenerate transport code after changing endpoints or models:
+
+```bash
+cd dance_trainer_server
+serverpod generate
+```
+
+## Run on Android
+
+With a USB-connected device, forward the API and asset ports:
+
+```bash
+adb reverse tcp:8080 tcp:8080
+adb reverse tcp:8082 tcp:8082
+cd dance_trainer_flutter
+flutter run --dart-define=SERVER_URL=http://127.0.0.1:8080/ --dart-define=ASSET_URL=http://127.0.0.1:8082/
+```
+
+Alternatively, use the development computer's reachable LAN address in both defines. Create an account through the sign-in screen and use the emailed code. The app downloads and verifies the instructor video and the trained pose model before starting. Hold your full body in view for setup, then start the countdown. Leaving the app stops the run. A completed run retains its observations locally if upload fails; return to the home screen and use sync to retry with the same account.
+
+Only Android has a camera bridge. Other platforms cannot start a training run. Development HTTP is enabled only in the Android debug manifest. Production builds need HTTPS endpoints and a release signing configuration.
+
+```bash
+flutter build apk --debug --target-platform android-arm64
+```
+
+## Content and scoring
+
+`content/source` contains six immutable archival files. The checksum script verifies all six. Do not overwrite these files. The extractor rejects archival destinations, existing outputs, and path traversal.
+
+```bash
+dart run tools/content_pipeline/compile.dart
+```
+
+The compiler reads the actual video dimensions and source sampling rates, excludes unreliable tracking intervals, and produces development pose checkpoints and sidecars. These are not human-reviewed choreography or beat annotations. The app uses each MP4's own audio to keep instructor playback on one timeline; the separate MP3 files remain archived.
+
+The scorer compares joint angles, limb directions, and body-scaled positions. A frame can match at most one checkpoint. Missing measurements reduce coverage; wholly mismatched movement earns no timing credit. Overall judgment is suppressed below the coverage gate. The server recomputes saved scores from observations, and never accepts a client total. Neither development routine can enter the leaderboard.
+
+The pinned model is recorded in [model provenance](content/models/README.md). Its upstream license is AGPL-3.0. The preserved routine media also has unresolved publication permissions; see [third-party notices](THIRD_PARTY_NOTICES.md). This project has not been published or deployed by this work.
+
+## Verification
+
+Run with PostgreSQL available on the test port:
+
+```bash
+bash scripts/verify_content.sh
+bash scripts/check_domain_boundary.sh
+dart analyze
+(cd packages/dance_domain && dart test)
+(cd dance_trainer_server && dart test --concurrency=1)
+(cd dance_trainer_flutter && flutter test)
+python3 -m unittest discover -s tools/content_pipeline/pose_extract/tests
+```
+
+The Flutter suite loads the actual model and decodes a frame from the archived video. It tests detected landmarks, mirrored output, and an empty image. It requires the model/media files, including Git LFS objects after cloning. No fake pose generator is connected to app bootstrap.
+
+A GitHub Actions workflow defines these checks. Its hosted run has not been exercised here. Local results and remaining limitations are in [docs/verification.md](docs/verification.md).
+
+## Server image
+
+Build from the repository root so the shared domain and runtime content are included:
+
+```bash
+docker build -f dance_trainer_server/Dockerfile -t dance-trainer-server .
+```
+
+The image uses Dart 3.10.8 and includes the model, compiled bundles and source media. It excludes passwords and runs as an unprivileged user. Supply runtime configuration, SMTP environment variables and a reachable database when starting it. The build's isolated Dart workspace has been compiled locally; a Docker image build still requires a Docker daemon.
+
+## Project map
+
+| Path | Purpose |
+|---|---|
+| `packages/dance_domain` | Pure scoring and evidence validation |
+| `dance_trainer_server` | Authenticated persistence, scoring, SMTP, assets and migrations |
+| `dance_trainer_client` | Generated API transport |
+| `dance_trainer_flutter` | Android training flow and durable upload queue |
+| `tools/content_pipeline` | Development content compiler and extraction tools |
+| `.kiro/specs/serverpod-dance-trainer` | Broader requirements, design and task backlog |
+| `.kiro/steering/project-rules.md` | Measurement, content and scoring rules |
+| `docs/content_audit.md` | Source-media audit |

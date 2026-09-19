@@ -1,0 +1,10 @@
+class: TrainingCatalogEntry
+fields:
+  routineId: String
+  title: String
+  durationMs: int
+  version: String
+  bundleJson: String
+  mediaPath: String
+  mediaSha256: String
+  rankedAvailable: bool

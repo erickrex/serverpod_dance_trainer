@@ -1,0 +1,17 @@
+name: dance_domain
+description: >
+  Pure Dart scoring, pose and content domain for Serverpod Dance Trainer.
+  Zero Flutter, FFI or Serverpod dependency by design (see design.md
+  "Dependency boundaries") -- this is what lets the client and server tiers
+  share identical scoring logic and produce identical results.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.9.0
+
+resolution: workspace
+
+dev_dependencies:
+  lints: ^5.0.0
+  test: ^1.25.0

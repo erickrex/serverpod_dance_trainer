@@ -1,0 +1,4 @@
+exception: TrainingError
+fields:
+  code: String
+  message: String

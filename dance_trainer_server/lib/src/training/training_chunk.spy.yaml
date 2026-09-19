@@ -1,0 +1,12 @@
+class: TrainingChunk
+table: training_chunk
+serverOnly: true
+fields:
+  attemptId: int
+  sequence: int
+  digest: String
+  payloadJson: String
+indexes:
+  chunk_sequence_unique:
+    fields: attemptId, sequence
+    unique: true

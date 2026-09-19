@@ -1,0 +1,9 @@
+# Large source assets and model weights are excluded through .gitignore.
+# The small compiled JSON bundles are stored directly in Git.
+
+# Keep text files normalized.
+*.dart text eol=lf
+*.md text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.sh text eol=lf

@@ -1,0 +1,5 @@
+class: BoardEntry
+fields:
+  displayName: String
+  score: int
+  achievedAt: DateTime

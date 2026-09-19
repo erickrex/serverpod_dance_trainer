@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "127.0.0.1:8090:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: dance_trainer
+      POSTGRES_PASSWORD: ${DANCE_DEV_DB_PASSWORD:?Run dart run scripts/configure_local.dart first}
+    volumes:
+      - dance_trainer_data:/var/lib/postgresql/data
+
+  postgres_test:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "127.0.0.1:9090:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: dance_trainer_test
+      POSTGRES_PASSWORD: ${DANCE_TEST_DB_PASSWORD:?Run dart run scripts/configure_local.dart first}
+    volumes:
+      - dance_trainer_test_data:/var/lib/postgresql/data
+
+volumes:
+  dance_trainer_data:
+  dance_trainer_test_data:

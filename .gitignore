@@ -1,0 +1,19 @@
+**/.dart_tool/
+**/build/
+**/.env
+**/.env.*
+**/config/passwords.yaml
+**/local.properties
+**/__pycache__/
+*.log
+*.jks
+*.keystore
+**/key.properties
+
+# Large training media, source pose data, and model weights stay local.
+/content/source/
+*.pte
+*.ptl
+
+# Keep GitHub Actions local until they are ready to publish.
+/.github/workflows/

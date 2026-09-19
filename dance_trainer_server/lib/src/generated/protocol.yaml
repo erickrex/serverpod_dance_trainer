@@ -1,0 +1,25 @@
+emailIdp:
+  - login:
+  - startRegistration:
+  - verifyRegistrationCode:
+  - finishRegistration:
+  - startPasswordReset:
+  - verifyPasswordResetCode:
+  - finishPasswordReset:
+  - hasAccount:
+jwtRefresh:
+  - refreshAccessToken:
+greeting:
+  - hello:
+catalog:
+  - list:
+training:
+  - profile:
+  - updateProfile:
+  - begin:
+  - upload:
+  - finalize:
+  - history:
+  - leaderboard:
+  - practice:
+  - completeRepetition:

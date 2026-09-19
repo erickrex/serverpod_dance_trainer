@@ -1,0 +1,43 @@
+name: dance_trainer_server
+description: Starting point for a Serverpod server.
+# version: 1.0.0
+# homepage: https://www.example.com
+
+environment:
+  sdk: '^3.8.0'
+
+resolution: workspace
+
+dependencies:
+  mailer: ^6.5.0
+  crypto: ^3.0.6
+  serverpod: 3.4.13
+  serverpod_auth_idp_server: 3.4.13
+  # Authoritative scoring lives here, shared with dance_trainer_flutter's
+  # provisional client-side scoring (design.md "Dependency boundaries",
+  # requirement 8.3 — client and server must agree exactly).
+  dance_domain:
+    path: ../packages/dance_domain
+
+dev_dependencies:
+  lints: '>=3.0.0 <7.0.0'
+  serverpod_test: 3.4.13
+  test: ^1.25.5
+
+serverpod:
+  scripts:
+    # Starts the server and applies migrations
+    start: dart bin/main.dart --apply-migrations
+
+    # Build the Flutter web app and copy it to the server's web directory.
+    # Windows uses xcopy since flutter's --output flag doesn't work there.
+    # See: https://github.com/flutter/flutter/issues/157886
+    flutter_build:
+      windows: >-
+        (if exist web\app rmdir /S /Q web\app)
+        & cd /D ..\dance_trainer_flutter
+        && flutter build web --base-href /app/ --wasm
+        && xcopy /E /I /Y build\web ..\dance_trainer_server\web\app
+      posix: |
+        cd ../dance_trainer_flutter
+        flutter build web --base-href /app/ --wasm --output ../dance_trainer_server/web/app
