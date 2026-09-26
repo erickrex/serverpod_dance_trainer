@@ -8,6 +8,15 @@ Completed runs can recover after a restart, resume their uploads and show provis
 
 ## Toolchain
 
+Large assets are kept locally and are not included in this repository: the six
+original MP3, MP4 and pose JSON files under `content/source/`, and model weights
+such as `content/models/yolov8n-pose_xnnpack.pte`. Before running training,
+content compilation, media-dependent tests or the server image build, supply
+these files at their original paths. See `content/manifests/source_inventory.json`
+for the source inventory and checksums, and [model provenance](content/models/README.md)
+for the model source and checksum. Cloning this repository alone does not provide
+a runnable training experience. Small compiled bundles and asset metadata are included.
+
 Use Flutter **3.38.9**, Dart **3.10.8**, Serverpod and Serverpod CLI **3.4.13**, JDK 17, and the Android SDK. Android training requires a front camera and API 24 or newer. The current build targets arm64. Native host inference tests require CMake, Ninja, a C++ compiler, and FFmpeg.
 
 ```bash
@@ -103,11 +112,11 @@ dart analyze
 python3 -m unittest discover -s tools/content_pipeline/pose_extract/tests
 ```
 
-The Flutter suite loads the actual model and decodes a frame from the archived video. It tests detected landmarks, mirrored output, and an empty image. It requires the model/media files, including Git LFS objects after cloning. No fake pose generator is connected to app bootstrap.
+The Flutter suite loads the actual model and decodes a frame from the archived video. It tests detected landmarks, mirrored output, and an empty image. It requires the locally supplied model/media files described above. No fake pose generator is connected to app bootstrap.
 
-A GitHub Actions workflow defines these checks. Its hosted run has not been exercised here. Local results and remaining limitations are in [docs/verification.md](docs/verification.md).
+A GitHub Actions workflow is kept locally under `.github/workflows/` and is excluded from this repository until it is ready to publish. Run the commands above for local verification. Local results and remaining limitations are in [docs/verification.md](docs/verification.md).
 
-The SQLite recovery tests use test-only transport and account doubles to inject failures. PostgreSQL tests separately verify real ownership, deletion, idempotency and concurrent transactions. CI also checks generated transport code, deterministic content, the server Docker build and an Android debug build.
+The SQLite recovery tests use test-only transport and account doubles to inject failures. PostgreSQL tests separately verify real ownership, deletion, idempotency and concurrent transactions. The unpublished workflow also defines checks for generated transport code, deterministic content, the server Docker build and an Android debug build.
 
 ## Server image
 
